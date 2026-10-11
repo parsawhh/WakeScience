@@ -1,0 +1,28 @@
+[versions]
+agp = "8.8.2"
+kotlin = "2.1.10"
+coroutines = "1.10.1"
+healthServices = "1.1.0-alpha04"
+wearCompose = "1.4.1"
+coreKtx = "1.15.0"
+wearable = "18.2.0"
+junit = "4.13.2"
+
+[libraries]
+android-gradlePlugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+
+# Wear OS & Health Services
+androidx-health-services = { module = "androidx.health:health-services-client", version.ref = "healthServices" }
+play-services-wearable = { module = "com.google.android.gms:play-services-wearable", version.ref = "wearable" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
+
+junit = { module = "junit:junit", version.ref = "junit" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

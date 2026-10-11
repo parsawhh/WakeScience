@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@android:drawable/ic_lock_idle_alarm"
+        android:label="WakeScience Bridge"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+
+        <!-- Sleep as Android Integration Receiver -->
+        <receiver
+            android:name=".SleepAsAndroidReceiver"
+            android:exported="true">
+            <intent-filter>
+                <!-- Fired by Sleep as Android when a smart period starts or alarms are set -->
+                <action android:name="com.urbandroid.sleep.alarmclock.SMART_PERIOD_AUTO" />
+                <action android:name="com.urbandroid.sleep.alarmclock.ALARM_ALERT_START_AUTO" />
+                <action android:name="com.urbandroid.sleep.alarmclock.SLEEP_TRACKING_STOPPED_AUTO" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+</manifest>
