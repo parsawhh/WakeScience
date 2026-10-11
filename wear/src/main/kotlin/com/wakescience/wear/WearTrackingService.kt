@@ -13,8 +13,11 @@ import androidx.core.app.NotificationCompat
 import androidx.health.services.client.HealthServices
 import androidx.health.services.client.MeasureCallback
 import androidx.health.services.client.data.Availability
+import androidx.health.services.client.data.DeltaDataType
 import androidx.health.services.client.data.DataPointContainer
 import androidx.health.services.client.data.DataType
+import androidx.health.services.client.data.IntervalDataPoint
+import androidx.health.services.client.data.SampleDataPoint
 import com.wakescience.core.PhysiologicalEpoch
 import com.wakescience.core.SmartWakeEngine
 import com.wakescience.core.StimulusRampController
@@ -72,16 +75,17 @@ class WearTrackingService : Service() {
 
     private fun startHealthServicesMonitoring() {
         val healthClient = HealthServices.getClient(this).measureClient
-        
+
         val hrCallback = object : MeasureCallback {
-            override fun onAvailabilityChanged(dataType: DataType<*, *>, availability: Availability) {}
+            override fun onAvailabilityChanged(dataType: DeltaDataType<*, *>, availability: Availability) {}
             override fun onDeliverDataPoints(dataPoints: DataPointContainer) {
-                dataPoints.getData(DataType.HEART_RATE_BPM).forEach { dp ->
+                val samples = dataPoints.getData(DataType.HEART_RATE_BPM)
+                samples.forEach { dp ->
                     latestBpm = dp.value
                 }
             }
         }
-        
+
         healthClient.registerMeasureCallback(DataType.HEART_RATE_BPM, hrCallback)
     }
 
