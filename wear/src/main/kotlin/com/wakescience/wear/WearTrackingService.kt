@@ -78,7 +78,7 @@ class WearTrackingService : Service() {
 
         val hrCallback = object : MeasureCallback {
             override fun onAvailabilityChanged(dataType: DeltaDataType<*, *>, availability: Availability) {}
-            override fun onDeliverDataPoints(dataPoints: DataPointContainer) {
+            override fun onDataReceived(dataPoints: DataPointContainer) {
                 val samples = dataPoints.getData(DataType.HEART_RATE_BPM)
                 samples.forEach { dp ->
                     latestBpm = dp.value
