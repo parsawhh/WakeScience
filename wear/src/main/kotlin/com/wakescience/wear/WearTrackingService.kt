@@ -43,6 +43,7 @@ class WearTrackingService : Service(), SensorEventListener {
 
     companion object {
         private const val TAG = "WearTrackingService"
+        private const val TELEMETRY_THROTTLE_MS = 10_000L // Transmit BT telemetry at most once per 10s
         var currentConfig = WakeEngineConfig()
     }
 
@@ -59,6 +60,7 @@ class WearTrackingService : Service(), SensorEventListener {
     private var latestActivity = 0.0
     private var currentStage = SleepStage.WAKE
     private var hasSleepBeenDetected = false
+    private var lastTelemetrySentMs = 0L
 
     private var windowStartMs = 0L
     private var hardDeadlineMs = 0L
@@ -126,20 +128,15 @@ class WearTrackingService : Service(), SensorEventListener {
         return START_STICKY
     }
 
-    /**
-     * Samsung Developer Guide: Use wake-up sensor variant (SensorManager.getDefaultSensor(TYPE, true))
-     * Standard sensors stop when the screen sleeps; the wake-up variant ensures events are delivered
-     * to the processor even in low-power ambient states.
-     */
     private fun startHardwareSensors() {
         try {
             sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
-            // Request wake-up version of accelerometer
+            // Request wake-up version of accelerometer with 500ms max batch latency to allow CPU sleep
             accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER, true)
                 ?: sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
             accelSensor?.let {
-                sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL, 0)
+                sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL, 500_000)
                 Log.i(TAG, "Registered Accelerometer listener (isWakeUp=${it.isWakeUpSensor})")
             }
 
@@ -174,7 +171,7 @@ class WearTrackingService : Service(), SensorEventListener {
                 val hr = event.values[0].toDouble()
                 if (hr > 30.0 && hr < 220.0) {
                     latestBpm = hr
-                    sendTelemetryToPhone()
+                    checkAndSendThrottledTelemetry()
                 }
             }
         }
@@ -195,7 +192,7 @@ class WearTrackingService : Service(), SensorEventListener {
                     samples.forEach { dp ->
                         if (dp.value > 30.0) {
                             latestBpm = dp.value
-                            sendTelemetryToPhone()
+                            checkAndSendThrottledTelemetry()
                         }
                     }
                 }
@@ -205,6 +202,14 @@ class WearTrackingService : Service(), SensorEventListener {
             Log.i(TAG, "Registered HealthServices PassiveMonitoringClient for continuous screen-off telemetry")
         } catch (e: Exception) {
             Log.e(TAG, "HealthServices Passive note: ${e.message}")
+        }
+    }
+
+    private fun checkAndSendThrottledTelemetry() {
+        val now = System.currentTimeMillis()
+        if (now - lastTelemetrySentMs >= TELEMETRY_THROTTLE_MS) {
+            lastTelemetrySentMs = now
+            sendTelemetryToPhone()
         }
     }
 
@@ -244,6 +249,9 @@ class WearTrackingService : Service(), SensorEventListener {
 
                 Log.i(TAG, "Epoch: stage=${currentStage.name}, shouldWake=${result.shouldWakeNow}, reason=${result.reason}, hasSleep=$hasSleepBeenDetected")
                 broadcastStatusUpdate(result.reason, latestBpm, latestRmssd, currentStage.name)
+                
+                // Always sync telemetry on epoch boundary
+                lastTelemetrySentMs = System.currentTimeMillis()
                 sendTelemetryToPhone()
 
                 if (result.shouldWakeNow) {
