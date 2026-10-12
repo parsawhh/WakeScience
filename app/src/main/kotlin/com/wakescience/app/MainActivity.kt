@@ -6,7 +6,10 @@ import android.widget.Button
 import android.widget.TextView
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.AvailabilityException
 import com.google.android.gms.tasks.Tasks
+import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +53,7 @@ class MainActivity : Activity() {
             sendStopMessage()
         }
 
+        log("App started. Package: $packageName")
         refreshNodes()
     }
 
@@ -60,27 +64,51 @@ class MainActivity : Activity() {
 
     private fun refreshNodes() {
         scope.launch {
-            try {
-                val availability = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(this@MainActivity)
-                if (availability != ConnectionResult.SUCCESS) {
-                    log("Google Play Services status code: $availability")
-                }
+            log("--- Diagnostic Check ---")
+            
+            // 1. Check GMS base availability
+            val gms = GoogleApiAvailability.getInstance()
+            val gmsCode = gms.isGooglePlayServicesAvailable(this@MainActivity)
+            log("GMS Core status: ${gms.getErrorString(gmsCode)} (code $gmsCode)")
 
-                val nodeClient = Wearable.getNodeClient(applicationContext)
-                val nodes = withContext(Dispatchers.IO) {
+            // 2. Test checkApiAvailability for Wearable Client
+            val nodeClient = Wearable.getNodeClient(this@MainActivity)
+            try {
+                withContext(Dispatchers.IO) {
+                    Tasks.await(gms.checkApiAvailability(nodeClient))
+                }
+                log("checkApiAvailability: SUCCESS (Wearable API is active)")
+            } catch (ae: AvailabilityException) {
+                val connResult = ae.getConnectionResult(nodeClient)
+                log("checkApiAvailability FAILED:")
+                log(" -> statusCode: ${connResult.statusCode}")
+                log(" -> resolution: ${connResult.resolution}")
+                log(" -> errorMsg: ${connResult.errorMessage}")
+            } catch (e: Exception) {
+                log("checkApiAvailability exception: ${e::class.java.simpleName}: ${e.message}")
+            }
+
+            // 3. Try getConnectedNodes
+            try {
+                val nodes: List<Node> = withContext(Dispatchers.IO) {
                     Tasks.await(nodeClient.connectedNodes)
                 }
                 if (nodes.isEmpty()) {
                     tvWatchStatus.text = "No watches connected via Wearable API"
-                    log("Scan: 0 watches found.")
+                    log("connectedNodes: 0 nodes returned")
                 } else {
-                    val names = nodes.joinToString(", ") { "${it.displayName} (${it.id.take(6)}...)" }
-                    tvWatchStatus.text = "Connected: $names"
-                    log("Found watches: $names")
+                    val info = nodes.joinToString(", ") { "${it.displayName} (id: ${it.id.take(8)}... nearby=${it.isNearby})" }
+                    tvWatchStatus.text = "Connected: $info"
+                    log("connectedNodes SUCCESS: $info")
                 }
+            } catch (apiEx: ApiException) {
+                tvWatchStatus.text = "API Error: status ${apiEx.statusCode}"
+                log("ApiException [${apiEx.statusCode}]: ${apiEx.message}")
+                log("Status object: ${apiEx.status}")
             } catch (e: Exception) {
-                tvWatchStatus.text = "Error scanning: ${e.message}"
-                log("Scan exception: ${e::class.java.simpleName}: ${e.message}")
+                tvWatchStatus.text = "Error: ${e.message}"
+                log("Exception: ${e::class.java.name}: ${e.message}")
+                e.cause?.let { log("Caused by: ${it::class.java.name}: ${it.message}") }
             }
         }
     }
@@ -93,14 +121,14 @@ class MainActivity : Activity() {
                     putLong(deadlineMs)
                 }.array()
 
-                val nodeClient = Wearable.getNodeClient(applicationContext)
-                val messageClient = Wearable.getMessageClient(applicationContext)
+                val nodeClient = Wearable.getNodeClient(this@MainActivity)
+                val messageClient = Wearable.getMessageClient(this@MainActivity)
                 val nodes = withContext(Dispatchers.IO) {
                     Tasks.await(nodeClient.connectedNodes)
                 }
 
                 if (nodes.isEmpty()) {
-                    log("Cannot send: No paired watch found.")
+                    log("Cannot send: No connected nodes found.")
                     return@launch
                 }
 
@@ -108,10 +136,12 @@ class MainActivity : Activity() {
                     withContext(Dispatchers.IO) {
                         Tasks.await(messageClient.sendMessage(node.id, path, payload))
                     }
-                    log("Sent $label to ${node.displayName}")
+                    log("Dispatched $label to ${node.displayName}")
                 }
+            } catch (apiEx: ApiException) {
+                log("Send failed [${apiEx.statusCode}]: ${apiEx.message}")
             } catch (e: Exception) {
-                log("Failed to send: ${e.message}")
+                log("Send failed: ${e.message}")
             }
         }
     }
@@ -119,14 +149,14 @@ class MainActivity : Activity() {
     private fun sendStopMessage() {
         scope.launch {
             try {
-                val nodeClient = Wearable.getNodeClient(applicationContext)
-                val messageClient = Wearable.getMessageClient(applicationContext)
+                val nodeClient = Wearable.getNodeClient(this@MainActivity)
+                val messageClient = Wearable.getMessageClient(this@MainActivity)
                 val nodes = withContext(Dispatchers.IO) {
                     Tasks.await(nodeClient.connectedNodes)
                 }
 
                 if (nodes.isEmpty()) {
-                    log("Cannot send stop: No paired watch.")
+                    log("Cannot send stop: No connected nodes.")
                     return@launch
                 }
 
@@ -134,10 +164,12 @@ class MainActivity : Activity() {
                     withContext(Dispatchers.IO) {
                         Tasks.await(messageClient.sendMessage(node.id, "/wakescience/stop", ByteArray(0)))
                     }
-                    log("Sent stop to ${node.displayName}")
+                    log("Dispatched stop to ${node.displayName}")
                 }
+            } catch (apiEx: ApiException) {
+                log("Stop failed [${apiEx.statusCode}]: ${apiEx.message}")
             } catch (e: Exception) {
-                log("Failed to send stop: ${e.message}")
+                log("Stop failed: ${e.message}")
             }
         }
     }
