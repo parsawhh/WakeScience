@@ -16,6 +16,11 @@ import androidx.core.content.ContextCompat
 
 class MainActivity : Activity() {
 
+    companion object {
+        private const val REQ_FOREGROUND_PERMS = 101
+        private const val REQ_BACKGROUND_PERMS = 102
+    }
+
     private lateinit var tvStatus: TextView
     private lateinit var tvBpm: TextView
 
@@ -38,7 +43,7 @@ class MainActivity : Activity() {
         tvBpm = findViewById(R.id.tvBpm)
 
         findViewById<Button>(R.id.btnGrantPerms).setOnClickListener {
-            requestRequiredPermissions()
+            requestPermissionsStepByStep()
         }
 
         findViewById<Button>(R.id.btnStartTest).setOnClickListener {
@@ -86,26 +91,57 @@ class MainActivity : Activity() {
         } catch (_: Exception) {}
     }
 
-    private fun requestRequiredPermissions() {
-        val permissions = mutableListOf(
+    private fun requestPermissionsStepByStep() {
+        val foregroundPerms = mutableListOf(
             Manifest.permission.BODY_SENSORS,
             Manifest.permission.ACTIVITY_RECOGNITION,
             Manifest.permission.VIBRATE,
             Manifest.permission.WAKE_LOCK
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
-            permissions.add(Manifest.permission.BODY_SENSORS_BACKGROUND)
+            foregroundPerms.add(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        val ungranted = permissions.filter {
+        val ungranted = foregroundPerms.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
 
         if (ungranted.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, ungranted.toTypedArray(), 101)
+            ActivityCompat.requestPermissions(this, ungranted.toTypedArray(), REQ_FOREGROUND_PERMS)
         } else {
-            tvStatus.text = "All Permissions Granted"
+            checkAndRequestBackgroundSensors()
+        }
+    }
+
+    private fun checkAndRequestBackgroundSensors() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.BODY_SENSORS_BACKGROUND)
+                != PackageManager.PERMISSION_GRANTED) {
+                tvStatus.text = "Please allow 'All the time' sensor permission"
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.BODY_SENSORS_BACKGROUND),
+                    REQ_BACKGROUND_PERMS
+                )
+                return
+            }
+        }
+        tvStatus.text = "All Permissions Granted"
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+            REQ_FOREGROUND_PERMS -> {
+                checkAndRequestBackgroundSensors()
+            }
+            REQ_BACKGROUND_PERMS -> {
+                tvStatus.text = "Background Sensors Configured"
+            }
         }
     }
 }

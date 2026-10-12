@@ -18,7 +18,7 @@ class WearCommandListener : WearableListenerService() {
             BridgeProtocol.PATH_CONFIG_SYNC -> {
                 val config = BridgeProtocol.parseConfig(messageEvent.data)
                 WearTrackingService.currentConfig = config
-                Log.i(TAG, "Synchronized config: profile=${config.vibrationProfile.name}, window=${config.windowMinutes}m, ramp=${config.rampDurationSeconds}s")
+                Log.i(TAG, "Synchronized config: profile=${config.vibrationProfile.name}, window=${config.windowMinutes}m, target=${config.alarmEpochMs}")
             }
             BridgeProtocol.PATH_START -> {
                 try {
@@ -26,16 +26,22 @@ class WearCommandListener : WearableListenerService() {
                     WearTrackingService.currentConfig = config
 
                     val now = System.currentTimeMillis()
-                    val windowStart = now
-                    val hardDeadline = now + (config.windowMinutes * 60 * 1000L)
+                    val targetMs = if (config.alarmEpochMs > now) {
+                        config.alarmEpochMs
+                    } else {
+                        // Default to 8 hours from now if no target alarm set
+                        now + (8 * 60 * 60 * 1000L)
+                    }
+                    val windowDurationMs = config.windowMinutes * 60 * 1000L
+                    val windowStart = targetMs - windowDurationMs
 
                     val intent = Intent(this, WearTrackingService::class.java).apply {
                         putExtra("WINDOW_START_MS", windowStart)
-                        putExtra("HARD_DEADLINE_MS", hardDeadline)
+                        putExtra("HARD_DEADLINE_MS", targetMs)
                         putExtra("CONFIG_BYTES", messageEvent.data)
                     }
                     startForegroundService(intent)
-                    Log.i(TAG, "Successfully invoked startForegroundService for WearTrackingService")
+                    Log.i(TAG, "Started WearTrackingService with window: start=$windowStart, target=$targetMs")
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to start WearTrackingService: ${e.message}", e)
                 }
@@ -44,7 +50,7 @@ class WearCommandListener : WearableListenerService() {
                 try {
                     val intent = Intent(this, WearTrackingService::class.java)
                     stopService(intent)
-                    Log.i(TAG, "Successfully invoked stopService for WearTrackingService")
+                    Log.i(TAG, "Stopped WearTrackingService")
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to stop WearTrackingService: ${e.message}", e)
                 }

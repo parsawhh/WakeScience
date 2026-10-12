@@ -16,16 +16,18 @@ class SmartWakeEngine(
     )
 
     /**
-     * Evaluates a sensor epoch during the smart alarm window.
+     * Evaluates a sensor epoch during sleep tracking.
      *
-     * CRITICAL BUG FIX FOR PREMATURE VIBRATIONS:
-     * - In previous code, if stage == WAKE or (stage == LIGHT && motion), it instantly triggered the alarm!
-     *   That caused the watch to vibrate immediately while the user was simply awake testing it!
-     * - Fix:
-     *   1. If user is completely awake (SleepStage.WAKE) BEFORE the deadline, DO NOT trigger the wake alarm ramp!
-     *      They are already awake. It only wakes if transition from sleep to arousal occurs inside the window,
-     *      or when the hard deadline is actually reached.
-     *   2. Never trigger outside the active window.
+     * RULES:
+     * 1. If user is WAKE:
+     *    - DO NOT VIBRATE! A user who is already awake does not need an alarm ramp.
+     * 2. If current time is BEFORE windowStartMs:
+     *    - We are tracking normal nighttime sleep. Never wake early.
+     * 3. Inside the smart wake window (windowStartMs <= currentTimestampMs < hardDeadlineMs):
+     *    - ONLY trigger if confirmed sleep (DEEP_N3 or consecutive LIGHT_N1_N2) was established,
+     *      AND user now exhibits a transient micro-arousal transition into Light Sleep.
+     * 4. Hard deadline (currentTimestampMs >= hardDeadlineMs):
+     *    - Only trigger if hardDeadlineMs > 0L and currentTimestampMs >= hardDeadlineMs.
      */
     fun evaluate(
         epoch: PhysiologicalEpoch,
@@ -36,28 +38,40 @@ class SmartWakeEngine(
         baselineDeepSleepRmssd: Double = 50.0,
         hasSleepBeenDetected: Boolean = false
     ): EvaluationResult {
-        // 1. Fallback: Hard deadline hit -> must wake user
-        if (currentTimestampMs >= hardDeadlineMs && hardDeadlineMs > 0L) {
+        // 1. Hard alarm deadline reached
+        if (hardDeadlineMs > 0L && currentTimestampMs >= hardDeadlineMs) {
             return EvaluationResult(
                 shouldWakeNow = true,
-                reason = "Hard alarm deadline reached",
+                reason = "Target alarm deadline reached",
                 stagedStage = SleepStage.WAKE,
                 confidence = 1.0
             )
         }
 
-        // 2. Before smart wake window
-        if (currentTimestampMs < windowStartMs) {
+        // 2. Classify current epoch
+        val staging = classifier.classifyEpoch(epoch, baselineRestingBpm, baselineDeepSleepRmssd)
+
+        // 3. User is actively awake
+        if (staging.stage == SleepStage.WAKE) {
+            return EvaluationResult(
+                shouldWakeNow = false,
+                reason = if (hasSleepBeenDetected) "Waking naturally - alarm suppressed" else "Awake - monitoring",
+                stagedStage = SleepStage.WAKE,
+                confidence = staging.confidence
+            )
+        }
+
+        // 4. If we haven't reached the wake window yet, keep sleeping
+        if (windowStartMs > 0L && currentTimestampMs < windowStartMs) {
             return EvaluationResult(
                 shouldWakeNow = false,
                 reason = "Before smart wake window",
-                stagedStage = SleepStage.WAKE,
-                confidence = 1.0
+                stagedStage = staging.stage,
+                confidence = staging.confidence
             )
         }
 
-        val staging = classifier.classifyEpoch(epoch, baselineRestingBpm, baselineDeepSleepRmssd)
-
+        // 5. We are inside the smart window [windowStartMs .. hardDeadlineMs]
         return when (staging.stage) {
             SleepStage.DEEP_N3 -> {
                 EvaluationResult(
@@ -67,10 +81,18 @@ class SmartWakeEngine(
                     confidence = staging.confidence
                 )
             }
+            SleepStage.REM -> {
+                EvaluationResult(
+                    shouldWakeNow = false,
+                    reason = "REM sleep - holding for light stage transition",
+                    stagedStage = staging.stage,
+                    confidence = staging.confidence
+                )
+            }
             SleepStage.LIGHT_N1_N2 -> {
-                // If user was asleep and we detect a micro-arousal transition in light sleep inside the window
-                val isAutonomicArousal = epoch.heartRateBpm >= baselineRestingBpm + 8.0
-                val isActigraphyMotion = staging.actigraphyScore >= 0.08
+                // Must have confirmed actual sleep beforehand
+                val isAutonomicArousal = epoch.heartRateBpm >= baselineRestingBpm + 4.0
+                val isActigraphyMotion = staging.actigraphyScore >= 0.03
 
                 if (hasSleepBeenDetected && (isAutonomicArousal || isActigraphyMotion)) {
                     EvaluationResult(
@@ -88,31 +110,13 @@ class SmartWakeEngine(
                     )
                 }
             }
-            SleepStage.REM -> {
+            SleepStage.WAKE -> {
                 EvaluationResult(
                     shouldWakeNow = false,
-                    reason = "REM sleep - holding for light stage transition",
-                    stagedStage = staging.stage,
+                    reason = "Awake",
+                    stagedStage = SleepStage.WAKE,
                     confidence = staging.confidence
                 )
-            }
-            SleepStage.WAKE -> {
-                // User is awake! If they were sleeping, they woke naturally. If they were never asleep, don't buzz!
-                if (hasSleepBeenDetected) {
-                    EvaluationResult(
-                        shouldWakeNow = true,
-                        reason = "Spontaneous morning wakefulness detected",
-                        stagedStage = staging.stage,
-                        confidence = staging.confidence
-                    )
-                } else {
-                    EvaluationResult(
-                        shouldWakeNow = false,
-                        reason = "User currently awake - monitoring",
-                        stagedStage = staging.stage,
-                        confidence = staging.confidence
-                    )
-                }
             }
         }
     }

@@ -5,10 +5,12 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.os.VibrationEffect
@@ -16,11 +18,10 @@ import android.os.Vibrator
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.health.services.client.HealthServices
-import androidx.health.services.client.MeasureCallback
-import androidx.health.services.client.data.Availability
-import androidx.health.services.client.data.DeltaDataType
+import androidx.health.services.client.PassiveListenerCallback
 import androidx.health.services.client.data.DataPointContainer
 import androidx.health.services.client.data.DataType
+import androidx.health.services.client.data.PassiveListenerConfig
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Wearable
 import com.wakescience.core.BridgeProtocol
@@ -53,7 +54,7 @@ class WearTrackingService : Service(), SensorEventListener {
     private val bufferLock = Any()
     private val rrBuffer = mutableListOf<Double>()
     private val accelBuffer = mutableListOf<Double>()
-    private var latestBpm = 65.0
+    private var latestBpm = 0.0
     private var latestRmssd = 45.0
     private var latestActivity = 0.0
     private var currentStage = SleepStage.WAKE
@@ -64,16 +65,16 @@ class WearTrackingService : Service(), SensorEventListener {
     private var isAlarmTriggered = false
     private var sensorManager: SensorManager? = null
     private var heartRateSensor: Sensor? = null
+    private var accelSensor: Sensor? = null
     private var vibrator: Vibrator? = null
 
     override fun onCreate() {
         super.onCreate()
         vibrator = getSystemService(Vibrator::class.java)
-        // Acquire PARTIAL_WAKE_LOCK so CPU and sensors stay alive with screen off
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WakeScience::TrackingLock").apply {
             setReferenceCounted(false)
-            acquire(12 * 60 * 60 * 1000L) // 12-hour timeout safety cap
+            acquire(12 * 60 * 60 * 1000L) // 12-hour timeout
         }
         Log.i(TAG, "Acquired PARTIAL_WAKE_LOCK for screen-off execution")
     }
@@ -93,7 +94,13 @@ class WearTrackingService : Service(), SensorEventListener {
             .setOngoing(true)
             .build()
 
-        startForeground(1001, notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(1001, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(1001, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_NONE)
+        } else {
+            startForeground(1001, notification)
+        }
 
         intent?.getByteArrayExtra("CONFIG_BYTES")?.let {
             currentConfig = BridgeProtocol.parseConfig(it)
@@ -112,27 +119,26 @@ class WearTrackingService : Service(), SensorEventListener {
         Log.i(TAG, "Tracking window: start=$windowStartMs, deadline=$hardDeadlineMs, profile=${currentConfig.vibrationProfile}")
         broadcastStatusUpdate("Tracking started", latestBpm, latestRmssd, currentStage.name)
 
-        startSensorMonitoring()
-        startHealthServicesMonitoring()
+        startHardwareSensors()
+        startPassiveHealthMonitoring()
         startEpochEvaluationLoop()
 
         return START_STICKY
     }
 
-    private fun startSensorMonitoring() {
+    private fun startHardwareSensors() {
         try {
             sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-            val accel = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-            accel?.let {
+            accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            accelSensor?.let {
                 sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL, 0)
                 Log.i(TAG, "Registered Accelerometer listener")
             }
 
-            // Also register hardware heart rate sensor to guarantee reads continue when screen dims
             heartRateSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_HEART_RATE)
             heartRateSensor?.let {
                 sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL, 0)
-                Log.i(TAG, "Registered Hardware Heart Rate listener for ambient/screen-off")
+                Log.i(TAG, "Registered Hardware Heart Rate listener")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to register sensors: ${e.message}")
@@ -166,15 +172,15 @@ class WearTrackingService : Service(), SensorEventListener {
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
-    private fun startHealthServicesMonitoring() {
+    private fun startPassiveHealthMonitoring() {
         try {
-            val healthClient = HealthServices.getClient(this).measureClient
+            val healthClient = HealthServices.getClient(this).passiveMonitoringClient
+            val config = PassiveListenerConfig.builder()
+                .setDataTypes(setOf(DataType.HEART_RATE_BPM))
+                .build()
 
-            val hrCallback = object : MeasureCallback {
-                override fun onAvailabilityChanged(dataType: DeltaDataType<*, *>, availability: Availability) {
-                    Log.d(TAG, "HR availability changed: $availability")
-                }
-                override fun onDataReceived(dataPoints: DataPointContainer) {
+            val callback = object : PassiveListenerCallback {
+                override fun onNewDataPointsReceived(dataPoints: DataPointContainer) {
                     val samples = dataPoints.getData(DataType.HEART_RATE_BPM)
                     samples.forEach { dp ->
                         if (dp.value > 30.0) {
@@ -185,10 +191,10 @@ class WearTrackingService : Service(), SensorEventListener {
                 }
             }
 
-            healthClient.registerMeasureCallback(DataType.HEART_RATE_BPM, hrCallback)
-            Log.i(TAG, "Registered HealthServices MeasureCallback")
+            healthClient.setPassiveListenerCallback(config, callback)
+            Log.i(TAG, "Registered HealthServices PassiveMonitoringClient for continuous screen-off telemetry")
         } catch (e: Exception) {
-            Log.e(TAG, "HealthServices registration note: ${e.message}")
+            Log.e(TAG, "HealthServices Passive note: ${e.message}")
         }
     }
 
@@ -304,6 +310,10 @@ class WearTrackingService : Service(), SensorEventListener {
         isAlarmTriggered = false
         vibrator?.cancel()
         sensorManager?.unregisterListener(this)
+        try {
+            val healthClient = HealthServices.getClient(this).passiveMonitoringClient
+            healthClient.clearPassiveListenerCallbackAsync()
+        } catch (_: Exception) {}
         broadcastStatusUpdate("Tracking Stopped", 0.0, 0.0, "STOPPED")
         serviceScope.cancel()
         try {
