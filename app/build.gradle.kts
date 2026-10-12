@@ -8,7 +8,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.wakescience.app"
+        applicationId = "com.wakescience.android"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

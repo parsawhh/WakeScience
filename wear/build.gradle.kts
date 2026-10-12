@@ -8,7 +8,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.wakescience.wear"
+        applicationId = "com.wakescience.android"
         minSdk = 30 // Wear OS 3.0+ (Galaxy Watch 4/5/6/7)
         targetSdk = 35
         versionCode = 1
