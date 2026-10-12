@@ -10,6 +10,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.IBinder
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.util.Log
@@ -48,18 +49,34 @@ class WearTrackingService : Service(), SensorEventListener {
     private var smartWakeEngine = SmartWakeEngine()
     private var rampController = StimulusRampController(currentConfig)
     
+    private var wakeLock: PowerManager.WakeLock? = null
     private val bufferLock = Any()
     private val rrBuffer = mutableListOf<Double>()
     private val accelBuffer = mutableListOf<Double>()
-    private var latestBpm = 60.0
-    private var latestRmssd = 50.0
+    private var latestBpm = 65.0
+    private var latestRmssd = 45.0
     private var latestActivity = 0.0
     private var currentStage = SleepStage.WAKE
+    private var hasSleepBeenDetected = false
 
     private var windowStartMs = 0L
     private var hardDeadlineMs = 0L
     private var isAlarmTriggered = false
     private var sensorManager: SensorManager? = null
+    private var heartRateSensor: Sensor? = null
+    private var vibrator: Vibrator? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        vibrator = getSystemService(Vibrator::class.java)
+        // Acquire PARTIAL_WAKE_LOCK so CPU and sensors stay alive with screen off
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WakeScience::TrackingLock").apply {
+            setReferenceCounted(false)
+            acquire(12 * 60 * 60 * 1000L) // 12-hour timeout safety cap
+        }
+        Log.i(TAG, "Acquired PARTIAL_WAKE_LOCK for screen-off execution")
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "onStartCommand received")
@@ -84,42 +101,65 @@ class WearTrackingService : Service(), SensorEventListener {
         }
 
         windowStartMs = intent?.getLongExtra("WINDOW_START_MS", 0L) ?: System.currentTimeMillis()
-        hardDeadlineMs = intent?.getLongExtra("HARD_DEADLINE_MS", 0L) ?: (System.currentTimeMillis() + (currentConfig.windowMinutes * 60 * 1000L))
+        hardDeadlineMs = intent?.getLongExtra("HARD_DEADLINE_MS", 0L) ?: (
+            if (currentConfig.alarmEpochMs > 0L) currentConfig.alarmEpochMs 
+            else System.currentTimeMillis() + (currentConfig.windowMinutes * 60 * 1000L)
+        )
+
+        isAlarmTriggered = false
+        hasSleepBeenDetected = false
 
         Log.i(TAG, "Tracking window: start=$windowStartMs, deadline=$hardDeadlineMs, profile=${currentConfig.vibrationProfile}")
         broadcastStatusUpdate("Tracking started", latestBpm, latestRmssd, currentStage.name)
 
-        startAccelerometerMonitoring()
+        startSensorMonitoring()
         startHealthServicesMonitoring()
         startEpochEvaluationLoop()
 
         return START_STICKY
     }
 
-    private fun startAccelerometerMonitoring() {
+    private fun startSensorMonitoring() {
         try {
             sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
             val accel = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
             accel?.let {
-                sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+                sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL, 0)
                 Log.i(TAG, "Registered Accelerometer listener")
             }
+
+            // Also register hardware heart rate sensor to guarantee reads continue when screen dims
+            heartRateSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_HEART_RATE)
+            heartRateSensor?.let {
+                sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL, 0)
+                Log.i(TAG, "Registered Hardware Heart Rate listener for ambient/screen-off")
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to register accelerometer: ${e.message}")
+            Log.e(TAG, "Failed to register sensors: ${e.message}")
         }
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
-            val x = event.values[0] / SensorManager.GRAVITY_EARTH
-            val y = event.values[1] / SensorManager.GRAVITY_EARTH
-            val z = event.values[2] / SensorManager.GRAVITY_EARTH
-            val mag = sqrt((x * x + y * y + z * z).toDouble())
-            val deviation = kotlin.math.abs(mag - 1.0) * currentConfig.motionSensitivity
+        event ?: return
+        when (event.sensor.type) {
+            Sensor.TYPE_ACCELEROMETER -> {
+                val x = event.values[0] / SensorManager.GRAVITY_EARTH
+                val y = event.values[1] / SensorManager.GRAVITY_EARTH
+                val z = event.values[2] / SensorManager.GRAVITY_EARTH
+                val mag = sqrt((x * x + y * y + z * z).toDouble())
+                val deviation = kotlin.math.abs(mag - 1.0) * currentConfig.motionSensitivity
 
-            synchronized(bufferLock) {
-                accelBuffer.add(deviation)
-                if (accelBuffer.size > 300) accelBuffer.removeAt(0)
+                synchronized(bufferLock) {
+                    accelBuffer.add(deviation)
+                    if (accelBuffer.size > 300) accelBuffer.removeAt(0)
+                }
+            }
+            Sensor.TYPE_HEART_RATE -> {
+                val hr = event.values[0].toDouble()
+                if (hr > 30.0 && hr < 220.0) {
+                    latestBpm = hr
+                    sendTelemetryToPhone()
+                }
             }
         }
     }
@@ -137,18 +177,18 @@ class WearTrackingService : Service(), SensorEventListener {
                 override fun onDataReceived(dataPoints: DataPointContainer) {
                     val samples = dataPoints.getData(DataType.HEART_RATE_BPM)
                     samples.forEach { dp ->
-                        latestBpm = dp.value
-                        Log.d(TAG, "Heart rate sample: $latestBpm BPM")
-                        broadcastStatusUpdate("Tracking (HR: ${latestBpm.toInt()})", latestBpm, latestRmssd, currentStage.name)
-                        sendTelemetryToPhone()
+                        if (dp.value > 30.0) {
+                            latestBpm = dp.value
+                            sendTelemetryToPhone()
+                        }
                     }
                 }
             }
 
             healthClient.registerMeasureCallback(DataType.HEART_RATE_BPM, hrCallback)
-            Log.i(TAG, "Registered MeasureCallback for HEART_RATE_BPM")
+            Log.i(TAG, "Registered HealthServices MeasureCallback")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to register HealthServices: ${e.message}", e)
+            Log.e(TAG, "HealthServices registration note: ${e.message}")
         }
     }
 
@@ -175,13 +215,18 @@ class WearTrackingService : Service(), SensorEventListener {
                     windowStartMs = windowStartMs,
                     hardDeadlineMs = hardDeadlineMs,
                     baselineRestingBpm = currentConfig.baselineRestingBpm,
-                    baselineDeepSleepRmssd = currentConfig.baselineDeepSleepRmssd
+                    baselineDeepSleepRmssd = currentConfig.baselineDeepSleepRmssd,
+                    hasSleepBeenDetected = hasSleepBeenDetected
                 )
 
                 currentStage = result.stagedStage
                 latestActivity = epoch.vectorMagnitudes.average().takeIf { !it.isNaN() } ?: 0.0
 
-                Log.i(TAG, "Epoch evaluated: stage=${result.stagedStage}, shouldWake=${result.shouldWakeNow}, reason=${result.reason}")
+                if (currentStage == SleepStage.DEEP_N3 || currentStage == SleepStage.LIGHT_N1_N2) {
+                    hasSleepBeenDetected = true
+                }
+
+                Log.i(TAG, "Epoch: stage=${currentStage.name}, shouldWake=${result.shouldWakeNow}, reason=${result.reason}, hasSleep=$hasSleepBeenDetected")
                 broadcastStatusUpdate(result.reason, latestBpm, latestRmssd, currentStage.name)
                 sendTelemetryToPhone()
 
@@ -199,14 +244,13 @@ class WearTrackingService : Service(), SensorEventListener {
 
     private fun triggerHapticStimulusRamp() {
         serviceScope.launch {
-            val vibrator = getSystemService(Vibrator::class.java)
             var elapsed = 0
             val intensity = currentConfig.maxHapticIntensity.coerceIn(1, 255)
-            Log.i(TAG, "Starting stimulus ramp sequence profile=${currentConfig.vibrationProfile.name}")
+            Log.i(TAG, "Starting wake stimulus ramp profile=${currentConfig.vibrationProfile.name}")
 
-            while (isActive && elapsed < rampController.rampDurationSeconds) {
+            while (isActive && isAlarmTriggered && elapsed < rampController.rampDurationSeconds) {
                 val (pulseMs, intervalMs) = rampController.calculateHapticPattern(elapsed)
-                vibrator.vibrate(VibrationEffect.createOneShot(pulseMs, intensity))
+                vibrator?.vibrate(VibrationEffect.createOneShot(pulseMs, intensity))
                 delay(intervalMs)
                 elapsed += ((pulseMs + intervalMs) / 1000).toInt().coerceAtLeast(1)
             }
@@ -256,10 +300,15 @@ class WearTrackingService : Service(), SensorEventListener {
     }
 
     override fun onDestroy() {
-        Log.i(TAG, "WearTrackingService destroyed")
+        Log.i(TAG, "WearTrackingService destroyed - stopping vibration and sensors")
+        isAlarmTriggered = false
+        vibrator?.cancel()
         sensorManager?.unregisterListener(this)
         broadcastStatusUpdate("Tracking Stopped", 0.0, 0.0, "STOPPED")
         serviceScope.cancel()
+        try {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        } catch (_: Exception) {}
         super.onDestroy()
     }
 

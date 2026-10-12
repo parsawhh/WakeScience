@@ -2,10 +2,6 @@ package com.wakescience.core
 
 import java.nio.ByteBuffer
 
-/**
- * Robust binary serialization protocol across the Wearable Data Layer.
- * Works natively in pure Kotlin JVM/Android without external JSON dependencies.
- */
 object BridgeProtocol {
     const val PATH_CONFIG_SYNC = "/wakescience/config_sync"
     const val PATH_START = "/wakescience/start"
@@ -13,11 +9,12 @@ object BridgeProtocol {
     const val PATH_TELEMETRY = "/wakescience/telemetry"
     const val PATH_STATUS = "/wakescience/status"
 
-    // Config binary: [version:Int][windowMinutes:Int][rampDurationSeconds:Int][baselineRestingBpm:Double][baselineDeepSleepRmssd:Double][motionSensitivity:Float][profileOrdinal:Int][maxHapticIntensity:Int]
-    // Total bytes = 4 + 4 + 4 + 8 + 8 + 4 + 4 + 4 = 36 bytes
+    // Config binary: [version:Int][alarmEpochMs:Long][windowMinutes:Int][rampDurationSeconds:Int][baselineRestingBpm:Double][baselineDeepSleepRmssd:Double][motionSensitivity:Float][profileOrdinal:Int][maxHapticIntensity:Int]
+    // Total bytes = 4 + 8 + 4 + 4 + 8 + 8 + 4 + 4 + 4 = 44 bytes
     fun serializeConfig(config: WakeEngineConfig): ByteArray {
-        val buffer = ByteBuffer.allocate(36)
-        buffer.putInt(1) // version
+        val buffer = ByteBuffer.allocate(44)
+        buffer.putInt(2) // version 2
+        buffer.putLong(config.alarmEpochMs)
         buffer.putInt(config.windowMinutes)
         buffer.putInt(config.rampDurationSeconds)
         buffer.putDouble(config.baselineRestingBpm)
@@ -33,6 +30,7 @@ object BridgeProtocol {
             if (data.size < 36) return WakeEngineConfig()
             val buffer = ByteBuffer.wrap(data)
             val version = buffer.int
+            val alarmEpochMs = if (version >= 2 && data.size >= 44) buffer.long else 0L
             val windowMinutes = buffer.int
             val rampDurationSeconds = buffer.int
             val baselineRestingBpm = buffer.double
@@ -45,6 +43,7 @@ object BridgeProtocol {
             val profile = if (profileOrdinal in profiles.indices) profiles[profileOrdinal] else VibrationProfile.GENTLE_RAMP
 
             WakeEngineConfig(
+                alarmEpochMs = alarmEpochMs,
                 windowMinutes = windowMinutes,
                 rampDurationSeconds = rampDurationSeconds,
                 baselineRestingBpm = baselineRestingBpm,
@@ -67,8 +66,6 @@ object BridgeProtocol {
         val isTracking: Boolean
     )
 
-    // Telemetry binary: [timestamp:Long][heartRateBpm:Double][rmssd:Double][actigraphyScore:Double][stageOrdinal:Int][isTracking:Byte]
-    // Total bytes = 8 + 8 + 8 + 8 + 4 + 1 = 37 bytes
     fun serializeTelemetry(
         heartRateBpm: Double,
         rmssd: Double,

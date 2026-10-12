@@ -1,6 +1,7 @@
 package com.wakescience.app
 
 import android.app.Activity
+import android.app.TimePickerDialog
 import android.os.Bundle
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -21,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -33,6 +35,7 @@ class MainActivity : Activity(), MessageClient.OnMessageReceivedListener {
     private lateinit var tvLiveBpm: TextView
     private lateinit var tvLiveRmssd: TextView
     private lateinit var tvLiveStage: TextView
+    private lateinit var tvAlarmTimeDisplay: TextView
 
     private lateinit var tvValWindow: TextView
     private lateinit var tvValRamp: TextView
@@ -47,7 +50,17 @@ class MainActivity : Activity(), MessageClient.OnMessageReceivedListener {
     private lateinit var sliderIntensity: Slider
     private lateinit var rgVibrationProfile: RadioGroup
 
-    private var currentConfig = WakeEngineConfig()
+    private var targetAlarmCal: Calendar = Calendar.getInstance().apply {
+        add(Calendar.DAY_OF_YEAR, 1)
+        set(Calendar.HOUR_OF_DAY, 7)
+        set(Calendar.MINUTE, 30)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    private var currentConfig = WakeEngineConfig(
+        alarmEpochMs = targetAlarmCal.timeInMillis
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,6 +72,7 @@ class MainActivity : Activity(), MessageClient.OnMessageReceivedListener {
         tvLiveBpm = findViewById(R.id.tvLiveBpm)
         tvLiveRmssd = findViewById(R.id.tvLiveRmssd)
         tvLiveStage = findViewById(R.id.tvLiveStage)
+        tvAlarmTimeDisplay = findViewById(R.id.tvAlarmTimeDisplay)
 
         tvValWindow = findViewById(R.id.tvValWindow)
         tvValRamp = findViewById(R.id.tvValRamp)
@@ -73,7 +87,12 @@ class MainActivity : Activity(), MessageClient.OnMessageReceivedListener {
         sliderIntensity = findViewById(R.id.sliderIntensity)
         rgVibrationProfile = findViewById(R.id.rgVibrationProfile)
 
+        updateAlarmDisplay()
         setupSliders()
+
+        findViewById<MaterialButton>(R.id.btnSetAlarmTime).setOnClickListener {
+            showTimePicker()
+        }
 
         findViewById<MaterialButton>(R.id.btnRefreshWatches).setOnClickListener {
             refreshNodes()
@@ -84,14 +103,19 @@ class MainActivity : Activity(), MessageClient.OnMessageReceivedListener {
         }
 
         findViewById<MaterialButton>(R.id.btnSendStartWindow).setOnClickListener {
+            updateConfig()
             val payload = BridgeProtocol.serializeConfig(currentConfig)
-            sendPayloadToWatch(BridgeProtocol.PATH_START, payload, "Started Smart Window (${currentConfig.windowMinutes}m)")
+            sendPayloadToWatch(BridgeProtocol.PATH_START, payload, "Started Sleep Tracking (Target: ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(targetAlarmCal.time)})")
         }
 
         findViewById<MaterialButton>(R.id.btnSendTestWake).setOnClickListener {
-            val testConfig = currentConfig.copy(windowMinutes = 1, rampDurationSeconds = 10)
+            val testConfig = currentConfig.copy(
+                alarmEpochMs = System.currentTimeMillis() + 5000,
+                windowMinutes = 1,
+                rampDurationSeconds = 10
+            )
             val payload = BridgeProtocol.serializeConfig(testConfig)
-            sendPayloadToWatch(BridgeProtocol.PATH_START, payload, "Started Instant Test Wake (10s Ramp)")
+            sendPayloadToWatch(BridgeProtocol.PATH_START, payload, "Started Test Wake (5s deadline preview)")
         }
 
         findViewById<MaterialButton>(R.id.btnSendStop).setOnClickListener {
@@ -100,6 +124,32 @@ class MainActivity : Activity(), MessageClient.OnMessageReceivedListener {
 
         log("WakeScience MD3 Expressive Hub active.")
         refreshNodes()
+    }
+
+    private fun showTimePicker() {
+        val hour = targetAlarmCal.get(Calendar.HOUR_OF_DAY)
+        val minute = targetAlarmCal.get(Calendar.MINUTE)
+
+        TimePickerDialog(this, { _, selectedHour, selectedMinute ->
+            val now = Calendar.getInstance()
+            targetAlarmCal = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, selectedHour)
+                set(Calendar.MINUTE, selectedMinute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+                if (before(now)) {
+                    add(Calendar.DAY_OF_YEAR, 1)
+                }
+            }
+            updateAlarmDisplay()
+            updateConfig()
+            log("Alarm set to ${SimpleDateFormat("hh:mm a", Locale.getDefault()).format(targetAlarmCal.time)}")
+        }, hour, minute, false).show()
+    }
+
+    private fun updateAlarmDisplay() {
+        val sdf = SimpleDateFormat("hh:mm a (MMM d)", Locale.getDefault())
+        tvAlarmTimeDisplay.text = sdf.format(targetAlarmCal.time)
     }
 
     override fun onResume() {
@@ -122,7 +172,7 @@ class MainActivity : Activity(), MessageClient.OnMessageReceivedListener {
                 tvLiveBpm.text = if (tele.heartRateBpm > 0) "${tele.heartRateBpm.toInt()} BPM" else "-- BPM"
                 tvLiveRmssd.text = if (tele.rmssd > 0) "${tele.rmssd.toInt()} ms" else "-- ms"
                 tvLiveStage.text = stage
-                log("Telemetry: HR=${tele.heartRateBpm.toInt()} Stage=$stage Act=${String.format("%.2f", tele.actigraphyScore)}")
+                log("Telemetry: HR=${tele.heartRateBpm.toInt()} Stage=$stage Act=${String.format(Locale.US, "%.2f", tele.actigraphyScore)}")
             }
         }
     }
@@ -145,7 +195,7 @@ class MainActivity : Activity(), MessageClient.OnMessageReceivedListener {
         }
 
         sliderSensitivity.addOnChangeListener { _, value, _ ->
-            tvValSensitivity.text = "${String.format("%.1f", value)}x"
+            tvValSensitivity.text = "${String.format(Locale.US, "%.1f", value)}x"
             updateConfig()
         }
 
@@ -169,6 +219,7 @@ class MainActivity : Activity(), MessageClient.OnMessageReceivedListener {
 
     private fun updateConfig() {
         currentConfig = currentConfig.copy(
+            alarmEpochMs = targetAlarmCal.timeInMillis,
             windowMinutes = sliderWindow.value.toInt(),
             rampDurationSeconds = sliderRamp.value.toInt(),
             baselineRestingBpm = sliderBpm.value.toDouble(),

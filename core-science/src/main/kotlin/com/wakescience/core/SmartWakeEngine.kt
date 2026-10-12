@@ -2,7 +2,7 @@ package com.wakescience.core
 
 /**
  * Science-backed Smart Wake Decision Engine.
- * Evaluates whether an alarm should be triggered early during the configured window.
+ * Evaluates whether an alarm should be triggered during the configured smart wake window.
  */
 class SmartWakeEngine(
     private val classifier: SleepStageClassifier = SleepStageClassifier()
@@ -18,11 +18,14 @@ class SmartWakeEngine(
     /**
      * Evaluates a sensor epoch during the smart alarm window.
      *
-     * Rules based on sleep science:
-     * 1. Never wake during DEEP_N3 (causes severe sleep inertia).
-     * 2. Trigger wake if epoch is LIGHT_N1_N2 AND there is physiological confirmation of arousal (micro-motion or HR spike).
-     * 3. Trigger wake immediately if user transitions into WAKE.
-     * 4. If current time >= hardDeadlineMs, must trigger regardless of stage.
+     * CRITICAL BUG FIX FOR PREMATURE VIBRATIONS:
+     * - In previous code, if stage == WAKE or (stage == LIGHT && motion), it instantly triggered the alarm!
+     *   That caused the watch to vibrate immediately while the user was simply awake testing it!
+     * - Fix:
+     *   1. If user is completely awake (SleepStage.WAKE) BEFORE the deadline, DO NOT trigger the wake alarm ramp!
+     *      They are already awake. It only wakes if transition from sleep to arousal occurs inside the window,
+     *      or when the hard deadline is actually reached.
+     *   2. Never trigger outside the active window.
      */
     fun evaluate(
         epoch: PhysiologicalEpoch,
@@ -30,24 +33,25 @@ class SmartWakeEngine(
         windowStartMs: Long,
         hardDeadlineMs: Long,
         baselineRestingBpm: Double = 55.0,
-        baselineDeepSleepRmssd: Double = 50.0
+        baselineDeepSleepRmssd: Double = 50.0,
+        hasSleepBeenDetected: Boolean = false
     ): EvaluationResult {
-        // Fallback: Hard deadline hit
-        if (currentTimestampMs >= hardDeadlineMs) {
+        // 1. Fallback: Hard deadline hit -> must wake user
+        if (currentTimestampMs >= hardDeadlineMs && hardDeadlineMs > 0L) {
             return EvaluationResult(
                 shouldWakeNow = true,
-                reason = "Hard deadline reached",
+                reason = "Hard alarm deadline reached",
                 stagedStage = SleepStage.WAKE,
                 confidence = 1.0
             )
         }
 
-        // Outside window: do not wake
+        // 2. Before smart wake window
         if (currentTimestampMs < windowStartMs) {
             return EvaluationResult(
                 shouldWakeNow = false,
                 reason = "Before smart wake window",
-                stagedStage = SleepStage.DEEP_N3,
+                stagedStage = SleepStage.WAKE,
                 confidence = 1.0
             )
         }
@@ -58,35 +62,27 @@ class SmartWakeEngine(
             SleepStage.DEEP_N3 -> {
                 EvaluationResult(
                     shouldWakeNow = false,
-                    reason = "User is in Slow-Wave Deep Sleep (N3) - waking suppressed to prevent sleep inertia",
-                    stagedStage = staging.stage,
-                    confidence = staging.confidence
-                )
-            }
-            SleepStage.WAKE -> {
-                EvaluationResult(
-                    shouldWakeNow = true,
-                    reason = "User has naturally transitioned to spontaneous wakefulness",
+                    reason = "Deep Slow-Wave Sleep (N3) - alarm suppressed",
                     stagedStage = staging.stage,
                     confidence = staging.confidence
                 )
             }
             SleepStage.LIGHT_N1_N2 -> {
-                // If light sleep is accompanied by autonomic arousal (HR > baseline + 8) or actigraphy burst
+                // If user was asleep and we detect a micro-arousal transition in light sleep inside the window
                 val isAutonomicArousal = epoch.heartRateBpm >= baselineRestingBpm + 8.0
                 val isActigraphyMotion = staging.actigraphyScore >= 0.08
 
-                if (isAutonomicArousal || isActigraphyMotion) {
+                if (hasSleepBeenDetected && (isAutonomicArousal || isActigraphyMotion)) {
                     EvaluationResult(
                         shouldWakeNow = true,
-                        reason = "Optimal Light Sleep arousal detected (HR spike or micro-motion)",
+                        reason = "Micro-arousal detected during Light Sleep window",
                         stagedStage = staging.stage,
                         confidence = staging.confidence
                     )
                 } else {
                     EvaluationResult(
                         shouldWakeNow = false,
-                        reason = "In Light Sleep, but waiting for micro-arousal transition",
+                        reason = "Light Sleep - waiting for optimal arousal epoch",
                         stagedStage = staging.stage,
                         confidence = staging.confidence
                     )
@@ -95,10 +91,28 @@ class SmartWakeEngine(
             SleepStage.REM -> {
                 EvaluationResult(
                     shouldWakeNow = false,
-                    reason = "In REM sleep - holding for light stage transition",
+                    reason = "REM sleep - holding for light stage transition",
                     stagedStage = staging.stage,
                     confidence = staging.confidence
                 )
+            }
+            SleepStage.WAKE -> {
+                // User is awake! If they were sleeping, they woke naturally. If they were never asleep, don't buzz!
+                if (hasSleepBeenDetected) {
+                    EvaluationResult(
+                        shouldWakeNow = true,
+                        reason = "Spontaneous morning wakefulness detected",
+                        stagedStage = staging.stage,
+                        confidence = staging.confidence
+                    )
+                } else {
+                    EvaluationResult(
+                        shouldWakeNow = false,
+                        reason = "User currently awake - monitoring",
+                        stagedStage = staging.stage,
+                        confidence = staging.confidence
+                    )
+                }
             }
         }
     }

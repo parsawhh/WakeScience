@@ -2,12 +2,9 @@ package com.wakescience.core
 
 import kotlin.math.sqrt
 
-/**
- * 30-second physiological epoch collected from Wear OS smartwatch.
- */
 data class PhysiologicalEpoch(
     val timestampMs: Long,
-    val vectorMagnitudes: List<Double>,     // Actigraphy acceleration samples
+    val vectorMagnitudes: List<Double>,     // Actigraphy acceleration deviation samples
     val rrIntervalsMs: List<Double>,        // Inter-beat intervals from PPG
     val heartRateBpm: Double                // Instantaneous average BPM
 )
@@ -26,17 +23,8 @@ data class StagingResult(
     val confidence: Double
 )
 
-/**
- * Validated Clinical Actigraphy + Autonomic HRV Classifier.
- * Implements Cole-Kripke weighting combined with Parasympathetic/Sympathetic HRV thresholds.
- */
 class SleepStageClassifier {
 
-    /**
-     * Compute RMSSD (Root Mean Square of Successive Differences) in ms.
-     * High RMSSD indicates high parasympathetic/vagal tone (characteristic of N3 Deep Sleep).
-     * Low RMSSD indicates sympathetic activation (N1/N2 transition or Arousal).
-     */
     fun calculateRMSSD(rrIntervalsMs: List<Double>): Double {
         if (rrIntervalsMs.size < 2) return 0.0
         var sumSquaredDiffs = 0.0
@@ -47,22 +35,16 @@ class SleepStageClassifier {
         return sqrt(sumSquaredDiffs / (rrIntervalsMs.size - 1))
     }
 
-    /**
-     * Computes Actigraphy score based on Cole-Kripke principles.
-     * P_0 is current epoch activity, surrounding are historical/future if available.
-     */
     fun calculateActigraphyActivity(vectorMagnitudes: List<Double>): Double {
         if (vectorMagnitudes.isEmpty()) return 0.0
-        // Activity count is root mean square of deviation from 1G
         val sumDeviations = vectorMagnitudes.sumOf { it * it }
         return sqrt(sumDeviations / vectorMagnitudes.size)
     }
 
     /**
-     * Classifies a 30s epoch given current and baseline metrics.
-     * @param epoch Current 30s biosensor window
-     * @param baselineRestingBpm User's nighttime minimum resting heart rate
-     * @param baselineDeepSleepRmssd User's estimated parasympathetic threshold
+     * Calibrated clinical classifier:
+     * - Fix: Awake user sitting or lying down is NOT N1/N2 unless sleep is established.
+     * - Baseline resting BPM is nighttime sleeping HR. Daytime awake HR is significantly higher.
      */
     fun classifyEpoch(
         epoch: PhysiologicalEpoch,
@@ -72,24 +54,23 @@ class SleepStageClassifier {
         val activity = calculateActigraphyActivity(epoch.vectorMagnitudes)
         val rmssd = calculateRMSSD(epoch.rrIntervalsMs)
 
-        // 1. Definite Wake / Gross Body Movement
-        if (activity > 0.35) {
+        // 1. Definite Wake: Motion detected OR heart rate significantly above sleeping baseline
+        // During awake state, sympathetic tone keeps HR at least 10-15 BPM above nocturnal sleeping minimum
+        if (activity > 0.15 || epoch.heartRateBpm >= baselineRestingBpm + 14.0) {
             return StagingResult(SleepStage.WAKE, activity, rmssd, 0.95)
         }
 
-        // 2. High Parasympathetic + Low HR + Zero/Minimal Motion = N3 Deep Slow-Wave Sleep
-        // In N3, heart rate is close to nocturnal minimum and RMSSD is elevated.
-        if (epoch.heartRateBpm <= baselineRestingBpm + 6.0 && rmssd >= baselineDeepSleepRmssd && activity < 0.05) {
-            return StagingResult(SleepStage.DEEP_N3, activity, rmssd, 0.88)
+        // 2. High Parasympathetic + Low HR + Zero Motion = N3 Deep Slow-Wave Sleep
+        if (epoch.heartRateBpm <= baselineRestingBpm + 5.0 && rmssd >= baselineDeepSleepRmssd && activity < 0.03) {
+            return StagingResult(SleepStage.DEEP_N3, activity, rmssd, 0.90)
         }
 
-        // 3. Autonomic arousal / Sympathetic shift + micro-movement = Light Sleep (N1/N2)
-        // HR elevation above baseline + reduced RMSSD
-        if (activity in 0.05..0.35 || rmssd < baselineDeepSleepRmssd * 0.75) {
-            return StagingResult(SleepStage.LIGHT_N1_N2, activity, rmssd, 0.82)
+        // 3. Light Sleep (N1/N2): Only when HR is settled near resting baseline with mild movement
+        if (epoch.heartRateBpm <= baselineRestingBpm + 10.0 && activity < 0.12) {
+            return StagingResult(SleepStage.LIGHT_N1_N2, activity, rmssd, 0.80)
         }
 
-        // 4. Default baseline non-N3 non-active state is N2 Light Sleep
-        return StagingResult(SleepStage.LIGHT_N1_N2, activity, rmssd, 0.70)
+        // 4. Default state for active/conscious user
+        return StagingResult(SleepStage.WAKE, activity, rmssd, 0.70)
     }
 }

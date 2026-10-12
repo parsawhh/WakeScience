@@ -90,10 +90,12 @@ class MainActivity : Activity() {
         val permissions = mutableListOf(
             Manifest.permission.BODY_SENSORS,
             Manifest.permission.ACTIVITY_RECOGNITION,
-            Manifest.permission.VIBRATE
+            Manifest.permission.VIBRATE,
+            Manifest.permission.WAKE_LOCK
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+            permissions.add(Manifest.permission.BODY_SENSORS_BACKGROUND)
         }
 
         val ungranted = permissions.filter {
