@@ -29,9 +29,15 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload APKs
+      - name: Copy and rename APKs
+        run: |
+          mkdir -p release-apks
+          cp wear/build/outputs/apk/debug/*-debug.apk release-apks/wakescience-galaxy-watch.apk
+          cp app/build/outputs/apk/debug/*-debug.apk release-apks/wakescience-phone.apk
+          ls -la release-apks/
+
+      - name: Upload APKs Artifact
         uses: actions/upload-artifact@v4
         with:
           name: wakescience-apks
-          path: |
-            **/build/outputs/apk/debug/*.apk
+          path: release-apks/*.apk

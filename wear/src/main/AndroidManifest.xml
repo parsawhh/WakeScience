@@ -9,6 +9,7 @@
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     
     <!-- Health Foreground Service (Exempts from Samsung Knox/Doze app killer) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -24,9 +25,19 @@
             android:name="com.google.android.wearable.standalone"
             android:value="true" />
 
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.DeviceDefault">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".WearTrackingService"
-            android:exported="false"
+            android:exported="true"
             android:foregroundServiceType="health" />
 
         <!-- Listener to receive START/STOP commands from Sleep as Android or Phone App -->
