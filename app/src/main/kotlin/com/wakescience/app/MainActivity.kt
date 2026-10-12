@@ -4,6 +4,8 @@ import android.app.Activity
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.CoroutineScope
@@ -34,13 +36,13 @@ class MainActivity : Activity() {
 
         findViewById<Button>(R.id.btnSendStartWindow).setOnClickListener {
             val now = System.currentTimeMillis()
-            val deadline = now + (30 * 60 * 1000) // 30 mins
+            val deadline = now + (30 * 60 * 1000)
             sendMessageToWatch("/wakescience/start", now, deadline, "Started 30m Smart Window")
         }
 
         findViewById<Button>(R.id.btnSendTestWake).setOnClickListener {
             val now = System.currentTimeMillis()
-            val deadline = now + 5000 // 5 seconds
+            val deadline = now + 5000
             sendMessageToWatch("/wakescience/start", now, deadline, "Started 5s Test Alarm (Instant Wake)")
         }
 
@@ -59,12 +61,17 @@ class MainActivity : Activity() {
     private fun refreshNodes() {
         scope.launch {
             try {
-                val nodeClient = Wearable.getNodeClient(this@MainActivity)
+                val availability = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(this@MainActivity)
+                if (availability != ConnectionResult.SUCCESS) {
+                    log("Google Play Services status code: $availability")
+                }
+
+                val nodeClient = Wearable.getNodeClient(applicationContext)
                 val nodes = withContext(Dispatchers.IO) {
                     Tasks.await(nodeClient.connectedNodes)
                 }
                 if (nodes.isEmpty()) {
-                    tvWatchStatus.text = "No watches connected via Bluetooth"
+                    tvWatchStatus.text = "No watches connected via Wearable API"
                     log("Scan: 0 watches found.")
                 } else {
                     val names = nodes.joinToString(", ") { "${it.displayName} (${it.id.take(6)}...)" }
@@ -73,7 +80,7 @@ class MainActivity : Activity() {
                 }
             } catch (e: Exception) {
                 tvWatchStatus.text = "Error scanning: ${e.message}"
-                log("Scan error: ${e.message}")
+                log("Scan exception: ${e::class.java.simpleName}: ${e.message}")
             }
         }
     }
@@ -86,8 +93,8 @@ class MainActivity : Activity() {
                     putLong(deadlineMs)
                 }.array()
 
-                val nodeClient = Wearable.getNodeClient(this@MainActivity)
-                val messageClient = Wearable.getMessageClient(this@MainActivity)
+                val nodeClient = Wearable.getNodeClient(applicationContext)
+                val messageClient = Wearable.getMessageClient(applicationContext)
                 val nodes = withContext(Dispatchers.IO) {
                     Tasks.await(nodeClient.connectedNodes)
                 }
@@ -112,8 +119,8 @@ class MainActivity : Activity() {
     private fun sendStopMessage() {
         scope.launch {
             try {
-                val nodeClient = Wearable.getNodeClient(this@MainActivity)
-                val messageClient = Wearable.getMessageClient(this@MainActivity)
+                val nodeClient = Wearable.getNodeClient(applicationContext)
+                val messageClient = Wearable.getMessageClient(applicationContext)
                 val nodes = withContext(Dispatchers.IO) {
                     Tasks.await(nodeClient.connectedNodes)
                 }
