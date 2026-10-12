@@ -126,19 +126,29 @@ class WearTrackingService : Service(), SensorEventListener {
         return START_STICKY
     }
 
+    /**
+     * Samsung Developer Guide: Use wake-up sensor variant (SensorManager.getDefaultSensor(TYPE, true))
+     * Standard sensors stop when the screen sleeps; the wake-up variant ensures events are delivered
+     * to the processor even in low-power ambient states.
+     */
     private fun startHardwareSensors() {
         try {
             sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-            accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+            // Request wake-up version of accelerometer
+            accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER, true)
+                ?: sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
             accelSensor?.let {
                 sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL, 0)
-                Log.i(TAG, "Registered Accelerometer listener")
+                Log.i(TAG, "Registered Accelerometer listener (isWakeUp=${it.isWakeUpSensor})")
             }
 
-            heartRateSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_HEART_RATE)
+            // Request wake-up version of heart rate sensor
+            heartRateSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_HEART_RATE, true)
+                ?: sensorManager?.getDefaultSensor(Sensor.TYPE_HEART_RATE)
             heartRateSensor?.let {
                 sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL, 0)
-                Log.i(TAG, "Registered Hardware Heart Rate listener")
+                Log.i(TAG, "Registered Hardware Heart Rate listener (isWakeUp=${it.isWakeUpSensor})")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to register sensors: ${e.message}")
@@ -310,10 +320,6 @@ class WearTrackingService : Service(), SensorEventListener {
         isAlarmTriggered = false
         vibrator?.cancel()
         sensorManager?.unregisterListener(this)
-        try {
-            val healthClient = HealthServices.getClient(this).passiveMonitoringClient
-            healthClient.clearPassiveListenerCallbackAsync()
-        } catch (_: Exception) {}
         broadcastStatusUpdate("Tracking Stopped", 0.0, 0.0, "STOPPED")
         serviceScope.cancel()
         try {
