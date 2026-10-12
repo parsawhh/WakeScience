@@ -64,31 +64,8 @@ class MainActivity : Activity() {
 
     private fun refreshNodes() {
         scope.launch {
-            log("--- Diagnostic Check ---")
-            
-            // 1. Check GMS base availability
-            val gms = GoogleApiAvailability.getInstance()
-            val gmsCode = gms.isGooglePlayServicesAvailable(this@MainActivity)
-            log("GMS Core status: ${gms.getErrorString(gmsCode)} (code $gmsCode)")
-
-            // 2. Test checkApiAvailability for Wearable Client
+            log("--- Refreshing Nodes ---")
             val nodeClient = Wearable.getNodeClient(this@MainActivity)
-            try {
-                withContext(Dispatchers.IO) {
-                    Tasks.await(gms.checkApiAvailability(nodeClient))
-                }
-                log("checkApiAvailability: SUCCESS (Wearable API is active)")
-            } catch (ae: AvailabilityException) {
-                val connResult = ae.getConnectionResult(nodeClient)
-                log("checkApiAvailability FAILED:")
-                log(" -> errorCode: ${connResult.errorCode}")
-                log(" -> resolution: ${connResult.resolution}")
-                log(" -> errorMsg: ${connResult.errorMessage}")
-            } catch (e: Exception) {
-                log("checkApiAvailability exception: ${e::class.java.simpleName}: ${e.message}")
-            }
-
-            // 3. Try getConnectedNodes
             try {
                 val nodes: List<Node> = withContext(Dispatchers.IO) {
                     Tasks.await(nodeClient.connectedNodes)
@@ -99,16 +76,14 @@ class MainActivity : Activity() {
                 } else {
                     val info = nodes.joinToString(", ") { "${it.displayName} (id: ${it.id.take(8)}... nearby=${it.isNearby})" }
                     tvWatchStatus.text = "Connected: $info"
-                    log("connectedNodes SUCCESS: $info")
+                    log("connectedNodes: $info")
                 }
             } catch (apiEx: ApiException) {
                 tvWatchStatus.text = "API Error: status ${apiEx.statusCode}"
                 log("ApiException [${apiEx.statusCode}]: ${apiEx.message}")
-                log("Status object: ${apiEx.status}")
             } catch (e: Exception) {
                 tvWatchStatus.text = "Error: ${e.message}"
                 log("Exception: ${e::class.java.name}: ${e.message}")
-                e.cause?.let { log("Caused by: ${it::class.java.name}: ${it.message}") }
             }
         }
     }
@@ -133,15 +108,16 @@ class MainActivity : Activity() {
                 }
 
                 nodes.forEach { node ->
-                    withContext(Dispatchers.IO) {
+                    log("Sending $path (${payload.size} bytes) to ${node.displayName}...")
+                    val result = withContext(Dispatchers.IO) {
                         Tasks.await(messageClient.sendMessage(node.id, path, payload))
                     }
-                    log("Dispatched $label to ${node.displayName}")
+                    log("Delivered $label! MessageId: $result")
                 }
             } catch (apiEx: ApiException) {
                 log("Send failed [${apiEx.statusCode}]: ${apiEx.message}")
             } catch (e: Exception) {
-                log("Send failed: ${e.message}")
+                log("Send failed: ${e::class.java.simpleName}: ${e.message}")
             }
         }
     }
@@ -161,15 +137,16 @@ class MainActivity : Activity() {
                 }
 
                 nodes.forEach { node ->
-                    withContext(Dispatchers.IO) {
+                    log("Sending /wakescience/stop to ${node.displayName}...")
+                    val result = withContext(Dispatchers.IO) {
                         Tasks.await(messageClient.sendMessage(node.id, "/wakescience/stop", ByteArray(0)))
                     }
-                    log("Dispatched stop to ${node.displayName}")
+                    log("Delivered stop! MessageId: $result")
                 }
             } catch (apiEx: ApiException) {
                 log("Stop failed [${apiEx.statusCode}]: ${apiEx.message}")
             } catch (e: Exception) {
-                log("Stop failed: ${e.message}")
+                log("Stop failed: ${e::class.java.simpleName}: ${e.message}")
             }
         }
     }
