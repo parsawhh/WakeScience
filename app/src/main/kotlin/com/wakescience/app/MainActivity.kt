@@ -174,6 +174,14 @@ class MainActivity : Activity(), MessageClient.OnMessageReceivedListener {
                 tvLiveStage.text = stage
                 log("Telemetry: HR=${tele.heartRateBpm.toInt()} Stage=$stage Act=${String.format(Locale.US, "%.2f", tele.actigraphyScore)}")
             }
+
+            // Forward telemetry to Sleep as Android if actively monitoring
+            if (tele.heartRateBpm > 30.0) {
+                SleepAsAndroidProvider.sendHeartRate(this@MainActivity, tele.heartRateBpm.toFloat())
+            }
+            if (tele.actigraphyScore >= 0.0) {
+                SleepAsAndroidProvider.sendMovementData(this@MainActivity, floatArrayOf(tele.actigraphyScore.toFloat()))
+            }
         }
     }
 

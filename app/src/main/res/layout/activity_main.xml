@@ -82,6 +82,32 @@
                         android:text="Checking for watches..."
                         android:textColor="@color/md_theme_dark_secondary"
                         android:textSize="14sp" />
+
+                    <!-- Sleep as Android Integration Status Indicator -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Sleep as Android Bridge"
+                            android:textColor="@color/md_theme_dark_onSurfaceVariant"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:id="@+id/tvSleepStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Active / Listening"
+                            android:textColor="@color/md_theme_dark_primary"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

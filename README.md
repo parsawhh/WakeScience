@@ -1,6 +1,19 @@
 # WakeScience
 
-A scientifically grounded, standalone Smart Wake & Sleep Staging Engine for Wear OS (Samsung Galaxy Watch 4/5/6/7) with bidirectional Sleep as Android integration.
+A scientifically grounded, standalone Smart Wake & Sleep Staging Engine for Wear OS (Samsung Galaxy Watch 4/5/6/7) with full official Sleep as Android Wearable API provider integration.
+
+## Features
+
+- **Standalone Wear OS Service**: Continuous screen-off physiological tracking via `PARTIAL_WAKE_LOCK`, `HealthServices` Passive Monitoring, and wake-up sensors (`TYPE_ACCELEROMETER`, `TYPE_HEART_RATE`).
+- **Official Sleep as Android Provider**:
+  - Implements the [Sleep as Android Wearable API](https://sleep.urbandroid.org/docs/devs/wearable_api.html).
+  - Responds to `CHECK_CONNECTED` with `CONFIRM_CONNECTED`.
+  - Dispatches `DATA_UPDATE` (actigraphy movement array), `HR_DATA_UPDATE` (heart rate BPM), and `START_ALARM` triggers upon confirmed light sleep micro-arousals.
+  - Controls watch lifecycle over `START_TRACKING`, `STOP_TRACKING`, and `SMART_PERIOD_AUTO`.
+- **Biometric Smart Wake Engine**:
+  - Suppresses alarms during N3 Slow-Wave Deep Sleep to eliminate sleep inertia.
+  - Triggers during Light Sleep (N1/N2) micro-arousals (sympathetic HR elevation + actigraphy acceleration) inside the user's customizable wake window.
+  - Smooth haptic stimulus ramping (Gentle Ramp, Heartbeat, Assertive, Interval Burst).
 
 ## Architecture
 
