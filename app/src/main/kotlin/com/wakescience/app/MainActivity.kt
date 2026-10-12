@@ -81,7 +81,7 @@ class MainActivity : Activity() {
             } catch (ae: AvailabilityException) {
                 val connResult = ae.getConnectionResult(nodeClient)
                 log("checkApiAvailability FAILED:")
-                log(" -> statusCode: ${connResult.statusCode}")
+                log(" -> errorCode: ${connResult.errorCode}")
                 log(" -> resolution: ${connResult.resolution}")
                 log(" -> errorMsg: ${connResult.errorMessage}")
             } catch (e: Exception) {
