@@ -2,59 +2,186 @@ package com.wakescience.app
 
 import android.app.Activity
 import android.os.Bundle
-import android.widget.Button
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.TextView
-import com.google.android.gms.common.ConnectionResult
-import com.google.android.gms.common.GoogleApiAvailability
-import com.google.android.gms.common.api.ApiException
-import com.google.android.gms.common.api.AvailabilityException
 import com.google.android.gms.tasks.Tasks
+import com.google.android.gms.wearable.MessageClient
+import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.Wearable
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.slider.Slider
+import com.wakescience.core.BridgeProtocol
+import com.wakescience.core.VibrationProfile
+import com.wakescience.core.WakeEngineConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class MainActivity : Activity() {
+class MainActivity : Activity(), MessageClient.OnMessageReceivedListener {
 
     private val scope = CoroutineScope(Dispatchers.Main)
+
     private lateinit var tvWatchStatus: TextView
     private lateinit var tvLogs: TextView
+    private lateinit var tvLiveBpm: TextView
+    private lateinit var tvLiveRmssd: TextView
+    private lateinit var tvLiveStage: TextView
+
+    private lateinit var tvValWindow: TextView
+    private lateinit var tvValRamp: TextView
+    private lateinit var tvValBpm: TextView
+    private lateinit var tvValSensitivity: TextView
+    private lateinit var tvValIntensity: TextView
+
+    private lateinit var sliderWindow: Slider
+    private lateinit var sliderRamp: Slider
+    private lateinit var sliderBpm: Slider
+    private lateinit var sliderSensitivity: Slider
+    private lateinit var sliderIntensity: Slider
+    private lateinit var rgVibrationProfile: RadioGroup
+
+    private var currentConfig = WakeEngineConfig()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setTheme(R.style.Theme_WakeScience)
         setContentView(R.layout.activity_main)
 
         tvWatchStatus = findViewById(R.id.tvWatchStatus)
         tvLogs = findViewById(R.id.tvLogs)
+        tvLiveBpm = findViewById(R.id.tvLiveBpm)
+        tvLiveRmssd = findViewById(R.id.tvLiveRmssd)
+        tvLiveStage = findViewById(R.id.tvLiveStage)
 
-        findViewById<Button>(R.id.btnRefreshWatches).setOnClickListener {
+        tvValWindow = findViewById(R.id.tvValWindow)
+        tvValRamp = findViewById(R.id.tvValRamp)
+        tvValBpm = findViewById(R.id.tvValBpm)
+        tvValSensitivity = findViewById(R.id.tvValSensitivity)
+        tvValIntensity = findViewById(R.id.tvValIntensity)
+
+        sliderWindow = findViewById(R.id.sliderWindow)
+        sliderRamp = findViewById(R.id.sliderRamp)
+        sliderBpm = findViewById(R.id.sliderBpm)
+        sliderSensitivity = findViewById(R.id.sliderSensitivity)
+        sliderIntensity = findViewById(R.id.sliderIntensity)
+        rgVibrationProfile = findViewById(R.id.rgVibrationProfile)
+
+        setupSliders()
+
+        findViewById<MaterialButton>(R.id.btnRefreshWatches).setOnClickListener {
             refreshNodes()
         }
 
-        findViewById<Button>(R.id.btnSendStartWindow).setOnClickListener {
-            val now = System.currentTimeMillis()
-            val deadline = now + (30 * 60 * 1000)
-            sendMessageToWatch("/wakescience/start", now, deadline, "Started 30m Smart Window")
+        findViewById<MaterialButton>(R.id.btnSyncConfig).setOnClickListener {
+            syncConfigToWatch()
         }
 
-        findViewById<Button>(R.id.btnSendTestWake).setOnClickListener {
-            val now = System.currentTimeMillis()
-            val deadline = now + 5000
-            sendMessageToWatch("/wakescience/start", now, deadline, "Started 5s Test Alarm (Instant Wake)")
+        findViewById<MaterialButton>(R.id.btnSendStartWindow).setOnClickListener {
+            val payload = BridgeProtocol.serializeConfig(currentConfig)
+            sendPayloadToWatch(BridgeProtocol.PATH_START, payload, "Started Smart Window (${currentConfig.windowMinutes}m)")
         }
 
-        findViewById<Button>(R.id.btnSendStop).setOnClickListener {
-            sendStopMessage()
+        findViewById<MaterialButton>(R.id.btnSendTestWake).setOnClickListener {
+            val testConfig = currentConfig.copy(windowMinutes = 1, rampDurationSeconds = 10)
+            val payload = BridgeProtocol.serializeConfig(testConfig)
+            sendPayloadToWatch(BridgeProtocol.PATH_START, payload, "Started Instant Test Wake (10s Ramp)")
         }
 
-        log("App started. Package: $packageName")
+        findViewById<MaterialButton>(R.id.btnSendStop).setOnClickListener {
+            sendPayloadToWatch(BridgeProtocol.PATH_STOP, ByteArray(0), "Stop Tracking")
+        }
+
+        log("WakeScience MD3 Expressive Hub active.")
         refreshNodes()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Wearable.getMessageClient(this).addListener(this)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Wearable.getMessageClient(this).removeListener(this)
+    }
+
+    override fun onMessageReceived(event: MessageEvent) {
+        if (event.path == BridgeProtocol.PATH_TELEMETRY) {
+            val json = BridgeProtocol.parseTelemetry(event.data) ?: return
+            runOnUiThread {
+                val bpm = json.optDouble("heartRateBpm", 0.0)
+                val rmssd = json.optDouble("rmssd", 0.0)
+                val stage = json.optString("currentStage", "IDLE")
+                val act = json.optDouble("actigraphyScore", 0.0)
+
+                tvLiveBpm.text = if (bpm > 0) "${bpm.toInt()} BPM" else "-- BPM"
+                tvLiveRmssd.text = if (rmssd > 0) "${rmssd.toInt()} ms" else "-- ms"
+                tvLiveStage.text = stage
+                log("Telemetry: HR=${bpm.toInt()} RMSSD=${rmssd.toInt()} Stage=$stage Act=${String.format("%.2f", act)}")
+            }
+        }
+    }
+
+    private fun setupSliders() {
+        sliderWindow.addOnChangeListener { _, value, _ ->
+            tvValWindow.text = "${value.toInt()} mins"
+            updateConfig()
+        }
+
+        sliderRamp.addOnChangeListener { _, value, _ ->
+            val mins = value.toInt() / 60
+            tvValRamp.text = "${value.toInt()} sec (${mins}m)"
+            updateConfig()
+        }
+
+        sliderBpm.addOnChangeListener { _, value, _ ->
+            tvValBpm.text = "${value.toInt()} BPM"
+            updateConfig()
+        }
+
+        sliderSensitivity.addOnChangeListener { _, value, _ ->
+            tvValSensitivity.text = "${String.format("%.1f", value)}x"
+            updateConfig()
+        }
+
+        sliderIntensity.addOnChangeListener { _, value, _ ->
+            val pct = (value / 255.0 * 100).toInt()
+            tvValIntensity.text = "$pct%"
+            updateConfig()
+        }
+
+        rgVibrationProfile.setOnCheckedChangeListener { _, checkedId ->
+            val profile = when (checkedId) {
+                R.id.rbHeartbeat -> VibrationProfile.HEARTBEAT
+                R.id.rbAssertive -> VibrationProfile.ASSERTIVE
+                R.id.rbInterval -> VibrationProfile.INTERVAL_BURST
+                else -> VibrationProfile.GENTLE_RAMP
+            }
+            currentConfig = currentConfig.copy(vibrationProfile = profile)
+            log("Selected profile: ${profile.displayName}")
+        }
+    }
+
+    private fun updateConfig() {
+        currentConfig = currentConfig.copy(
+            windowMinutes = sliderWindow.value.toInt(),
+            rampDurationSeconds = sliderRamp.value.toInt(),
+            baselineRestingBpm = sliderBpm.value.toDouble(),
+            motionSensitivity = sliderSensitivity.value,
+            maxHapticIntensity = sliderIntensity.value.toInt()
+        )
+    }
+
+    private fun syncConfigToWatch() {
+        updateConfig()
+        val payload = BridgeProtocol.serializeConfig(currentConfig)
+        sendPayloadToWatch(BridgeProtocol.PATH_CONFIG_SYNC, payload, "Synced Config (${currentConfig.vibrationProfile.name})")
     }
 
     private fun log(message: String) {
@@ -64,7 +191,6 @@ class MainActivity : Activity() {
 
     private fun refreshNodes() {
         scope.launch {
-            log("--- Refreshing Nodes ---")
             val nodeClient = Wearable.getNodeClient(this@MainActivity)
             try {
                 val nodes: List<Node> = withContext(Dispatchers.IO) {
@@ -72,30 +198,22 @@ class MainActivity : Activity() {
                 }
                 if (nodes.isEmpty()) {
                     tvWatchStatus.text = "No watches connected via Wearable API"
-                    log("connectedNodes: 0 nodes returned")
+                    log("Scan: 0 watches connected.")
                 } else {
                     val info = nodes.joinToString(", ") { "${it.displayName} (id: ${it.id.take(8)}... nearby=${it.isNearby})" }
                     tvWatchStatus.text = "Connected: $info"
-                    log("connectedNodes: $info")
+                    log("Connected to: $info")
                 }
-            } catch (apiEx: ApiException) {
-                tvWatchStatus.text = "API Error: status ${apiEx.statusCode}"
-                log("ApiException [${apiEx.statusCode}]: ${apiEx.message}")
             } catch (e: Exception) {
                 tvWatchStatus.text = "Error: ${e.message}"
-                log("Exception: ${e::class.java.name}: ${e.message}")
+                log("Scan error: ${e.message}")
             }
         }
     }
 
-    private fun sendMessageToWatch(path: String, startMs: Long, deadlineMs: Long, label: String) {
+    private fun sendPayloadToWatch(path: String, payload: ByteArray, label: String) {
         scope.launch {
             try {
-                val payload = ByteBuffer.allocate(16).apply {
-                    putLong(startMs)
-                    putLong(deadlineMs)
-                }.array()
-
                 val nodeClient = Wearable.getNodeClient(this@MainActivity)
                 val messageClient = Wearable.getMessageClient(this@MainActivity)
                 val nodes = withContext(Dispatchers.IO) {
@@ -103,50 +221,19 @@ class MainActivity : Activity() {
                 }
 
                 if (nodes.isEmpty()) {
-                    log("Cannot send: No connected nodes found.")
+                    log("Cannot send: No paired watch found.")
                     return@launch
                 }
 
                 nodes.forEach { node ->
-                    log("Sending $path (${payload.size} bytes) to ${node.displayName}...")
+                    log("Dispatching $label to ${node.displayName}...")
                     val result = withContext(Dispatchers.IO) {
                         Tasks.await(messageClient.sendMessage(node.id, path, payload))
                     }
-                    log("Delivered $label! MessageId: $result")
+                    log("Ack received! MessageId: $result")
                 }
-            } catch (apiEx: ApiException) {
-                log("Send failed [${apiEx.statusCode}]: ${apiEx.message}")
             } catch (e: Exception) {
-                log("Send failed: ${e::class.java.simpleName}: ${e.message}")
-            }
-        }
-    }
-
-    private fun sendStopMessage() {
-        scope.launch {
-            try {
-                val nodeClient = Wearable.getNodeClient(this@MainActivity)
-                val messageClient = Wearable.getMessageClient(this@MainActivity)
-                val nodes = withContext(Dispatchers.IO) {
-                    Tasks.await(nodeClient.connectedNodes)
-                }
-
-                if (nodes.isEmpty()) {
-                    log("Cannot send stop: No connected nodes.")
-                    return@launch
-                }
-
-                nodes.forEach { node ->
-                    log("Sending /wakescience/stop to ${node.displayName}...")
-                    val result = withContext(Dispatchers.IO) {
-                        Tasks.await(messageClient.sendMessage(node.id, "/wakescience/stop", ByteArray(0)))
-                    }
-                    log("Delivered stop! MessageId: $result")
-                }
-            } catch (apiEx: ApiException) {
-                log("Stop failed [${apiEx.statusCode}]: ${apiEx.message}")
-            } catch (e: Exception) {
-                log("Stop failed: ${e::class.java.simpleName}: ${e.message}")
+                log("Send failed: ${e.message}")
             }
         }
     }

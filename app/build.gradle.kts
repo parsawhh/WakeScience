@@ -49,6 +49,7 @@ android {
 dependencies {
     implementation(project(":core-science"))
     implementation(libs.androidx.core.ktx)
+    implementation(libs.google.material)
     implementation(libs.play.services.wearable)
     implementation(libs.kotlinx.coroutines.android)
 }

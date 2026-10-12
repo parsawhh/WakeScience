@@ -1,115 +1,519 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#121212"
-    android:padding="20dp">
+    android:background="@color/md_theme_dark_background">
 
-    <LinearLayout
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:layout_height="match_parent"
+        android:fillViewport="true">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="WakeScience Bridge"
-            android:textColor="#FFFFFF"
-            android:textSize="22sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Sleep as Android -> Galaxy Watch Bridge"
-            android:textColor="#AAAAAA"
-            android:textSize="14sp" />
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginVertical="16dp"
-            android:background="#333333" />
-
-        <TextView
-            android:id="@+id/tvWatchStatus"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Connected Watches: Checking..."
-            android:textColor="#00E5FF"
-            android:textSize="16sp" />
-
-        <Button
-            android:id="@+id/btnRefreshWatches"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Scan Connected Watches" />
+            android:orientation="vertical"
+            android:padding="20dp">
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginVertical="16dp"
-            android:background="#333333" />
+            <!-- Header -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="WakeScience"
+                android:textColor="@color/md_theme_dark_primary"
+                android:textSize="28sp"
+                android:textStyle="bold" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Manual Bridge Controls"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Smart Wake &amp; Biometric Telemetry Hub"
+                android:textColor="@color/md_theme_dark_onSurfaceVariant"
+                android:textSize="14sp" />
 
-        <Button
-            android:id="@+id/btnSendStartWindow"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:backgroundTint="#00897B"
-            android:text="Trigger Smart Window (Start Watch)" />
+            <!-- Watch Connection Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardBackgroundColor="@color/md_theme_dark_card"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="2dp"
+                app:strokeColor="@color/md_theme_dark_surfaceVariant"
+                app:strokeWidth="1dp">
 
-        <Button
-            android:id="@+id/btnSendTestWake"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:backgroundTint="#D81B60"
-            android:text="Trigger Instant Wake Test (5s Hard Deadline)" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
 
-        <Button
-            android:id="@+id/btnSendStop"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:backgroundTint="#546E7A"
-            android:text="Stop Watch Tracking" />
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginVertical="16dp"
-            android:background="#333333" />
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Paired Smartwatch"
+                            android:textColor="@color/md_theme_dark_onSurface"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Debug Log"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnRefreshWatches"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Scan"
+                            android:textSize="12sp" />
+                    </LinearLayout>
 
-        <TextView
-            android:id="@+id/tvLogs"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:background="#1E1E1E"
-            android:fontFamily="monospace"
-            android:padding="12dp"
-            android:text="Ready.\n"
-            android:textColor="#00FF66"
-            android:textSize="12sp" />
+                    <TextView
+                        android:id="@+id/tvWatchStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="Checking for watches..."
+                        android:textColor="@color/md_theme_dark_secondary"
+                        android:textSize="14sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
-    </LinearLayout>
-</ScrollView>
+            <!-- Live Telemetry Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardBackgroundColor="@color/md_theme_dark_card"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="2dp"
+                app:strokeColor="@color/md_theme_dark_surfaceVariant"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Live Biosensor Telemetry"
+                        android:textColor="@color/md_theme_dark_onSurface"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="HEART RATE"
+                                android:textColor="@color/md_theme_dark_onSurfaceVariant"
+                                android:textSize="11sp" />
+
+                            <TextView
+                                android:id="@+id/tvLiveBpm"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="-- BPM"
+                                android:textColor="@color/color_accent_heart"
+                                android:textSize="22sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="RMSSD / HRV"
+                                android:textColor="@color/md_theme_dark_onSurfaceVariant"
+                                android:textSize="11sp" />
+
+                            <TextView
+                                android:id="@+id/tvLiveRmssd"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="-- ms"
+                                android:textColor="@color/color_accent_sleep"
+                                android:textSize="22sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="SLEEP STAGE"
+                                android:textColor="@color/md_theme_dark_onSurfaceVariant"
+                                android:textSize="11sp" />
+
+                            <TextView
+                                android:id="@+id/tvLiveStage"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="IDLE"
+                                android:textColor="@color/color_accent_motion"
+                                android:textSize="20sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Configuration & Sliders Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardBackgroundColor="@color/md_theme_dark_card"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="2dp"
+                app:strokeColor="@color/md_theme_dark_surfaceVariant"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Engine Configuration"
+                        android:textColor="@color/md_theme_dark_onSurface"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <!-- Vibration Profile Selector -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="Haptic Vibration Profile:"
+                        android:textColor="@color/md_theme_dark_onSurfaceVariant"
+                        android:textSize="13sp" />
+
+                    <RadioGroup
+                        android:id="@+id/rgVibrationProfile"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp">
+
+                        <RadioButton
+                            android:id="@+id/rbGentle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:checked="true"
+                            android:text="Gentle Ramp (Clinical Weber-Fechner)"
+                            android:textColor="@color/md_theme_dark_onSurface"
+                            android:textSize="13sp" />
+
+                        <RadioButton
+                            android:id="@+id/rbHeartbeat"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Biorhythmic Heartbeat (Diastolic pulse)"
+                            android:textColor="@color/md_theme_dark_onSurface"
+                            android:textSize="13sp" />
+
+                        <RadioButton
+                            android:id="@+id/rbAssertive"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Assertive Escalation (Crisp motor bursts)"
+                            android:textColor="@color/md_theme_dark_onSurface"
+                            android:textSize="13sp" />
+
+                        <RadioButton
+                            android:id="@+id/rbInterval"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Interval Wave (Rest &amp; Wave packets)"
+                            android:textColor="@color/md_theme_dark_onSurface"
+                            android:textSize="13sp" />
+                    </RadioGroup>
+
+                    <!-- Slider: Smart Window Duration -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Smart Wake Window"
+                            android:textColor="@color/md_theme_dark_onSurfaceVariant"
+                            android:textSize="13sp" />
+
+                        <TextView
+                            android:id="@+id/tvValWindow"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="30 mins"
+                            android:textColor="@color/md_theme_dark_primary"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/sliderWindow"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:value="30"
+                        android:valueFrom="10"
+                        android:valueTo="60"
+                        android:stepSize="5" />
+
+                    <!-- Slider: Ramp Duration -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Acoustic/Haptic Ramp Duration"
+                            android:textColor="@color/md_theme_dark_onSurfaceVariant"
+                            android:textSize="13sp" />
+
+                        <TextView
+                            android:id="@+id/tvValRamp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="300 sec (5m)"
+                            android:textColor="@color/md_theme_dark_primary"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/sliderRamp"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:value="300"
+                        android:valueFrom="60"
+                        android:valueTo="600"
+                        android:stepSize="30" />
+
+                    <!-- Slider: Baseline Resting BPM -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Baseline Resting Heart Rate"
+                            android:textColor="@color/md_theme_dark_onSurfaceVariant"
+                            android:textSize="13sp" />
+
+                        <TextView
+                            android:id="@+id/tvValBpm"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="55 BPM"
+                            android:textColor="@color/md_theme_dark_primary"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/sliderBpm"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:value="55"
+                        android:valueFrom="40"
+                        android:valueTo="85"
+                        android:stepSize="1" />
+
+                    <!-- Slider: Motion Sensitivity -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Actigraphy Motion Sensitivity"
+                            android:textColor="@color/md_theme_dark_onSurfaceVariant"
+                            android:textSize="13sp" />
+
+                        <TextView
+                            android:id="@+id/tvValSensitivity"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="1.0x (Standard)"
+                            android:textColor="@color/md_theme_dark_primary"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/sliderSensitivity"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:value="1.0"
+                        android:valueFrom="0.5"
+                        android:valueTo="2.5"
+                        android:stepSize="0.1" />
+
+                    <!-- Slider: Max Haptic Intensity -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Max Wrist Motor Amplitude"
+                            android:textColor="@color/md_theme_dark_onSurfaceVariant"
+                            android:textSize="13sp" />
+
+                        <TextView
+                            android:id="@+id/tvValIntensity"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="100%"
+                            android:textColor="@color/md_theme_dark_primary"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/sliderIntensity"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:value="255"
+                        android:valueFrom="50"
+                        android:valueTo="255"
+                        android:stepSize="5" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnSyncConfig"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="Sync Settings to Watch" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Action Controls Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardBackgroundColor="@color/md_theme_dark_card"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="2dp"
+                app:strokeColor="@color/md_theme_dark_surfaceVariant"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Smart Alarm Controls"
+                        android:textColor="@color/md_theme_dark_onSurface"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnSendStartWindow"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="Start Smart Window Tracking" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnSendTestWake"
+                        style="@style/Widget.Material3.Button.ElevatedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="Instant Test Wake (5s Ramp Trigger)" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnSendStop"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="Stop Tracking" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Console Log -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="Bridge Console Log"
+                android:textColor="@color/md_theme_dark_onSurfaceVariant"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvLogs"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="@color/md_theme_dark_card"
+                android:fontFamily="monospace"
+                android:padding="12dp"
+                android:text="Ready.\n"
+                android:textColor="@color/color_accent_motion"
+                android:textSize="11sp" />
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

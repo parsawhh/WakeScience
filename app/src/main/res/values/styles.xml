@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.WakeScience" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:statusBarColor">@color/md_theme_dark_background</item>
+        <item name="android:windowBackground">@color/md_theme_dark_background</item>
+        <item name="colorPrimary">@color/md_theme_dark_primary</item>
+        <item name="colorOnPrimary">@color/md_theme_dark_onPrimary</item>
+        <item name="colorSurface">@color/md_theme_dark_surface</item>
+        <item name="colorOnSurface">@color/md_theme_dark_onSurface</item>
+    </style>
+</resources>
