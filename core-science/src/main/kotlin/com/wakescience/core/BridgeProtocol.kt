@@ -1,10 +1,10 @@
 package com.wakescience.core
 
-import org.json.JSONObject
+import java.nio.ByteBuffer
 
 /**
- * Robust JSON-based communication protocol across the Wearable Data Layer.
- * Replaces raw ByteBuffers with self-describing, versioned payloads.
+ * Robust binary serialization protocol across the Wearable Data Layer.
+ * Works natively in pure Kotlin JVM/Android without external JSON dependencies.
  */
 object BridgeProtocol {
     const val PATH_CONFIG_SYNC = "/wakescience/config_sync"
@@ -13,66 +13,91 @@ object BridgeProtocol {
     const val PATH_TELEMETRY = "/wakescience/telemetry"
     const val PATH_STATUS = "/wakescience/status"
 
+    // Config binary: [version:Int][windowMinutes:Int][rampDurationSeconds:Int][baselineRestingBpm:Double][baselineDeepSleepRmssd:Double][motionSensitivity:Float][profileOrdinal:Int][maxHapticIntensity:Int]
+    // Total bytes = 4 + 4 + 4 + 8 + 8 + 4 + 4 + 4 = 36 bytes
     fun serializeConfig(config: WakeEngineConfig): ByteArray {
-        val json = JSONObject().apply {
-            put("windowMinutes", config.windowMinutes)
-            put("rampDurationSeconds", config.rampDurationSeconds)
-            put("baselineRestingBpm", config.baselineRestingBpm)
-            put("baselineDeepSleepRmssd", config.baselineDeepSleepRmssd)
-            put("motionSensitivity", config.motionSensitivity.toDouble())
-            put("vibrationProfile", config.vibrationProfile.name)
-            put("maxHapticIntensity", config.maxHapticIntensity)
-        }
-        return json.toString().toByteArray(Charsets.UTF_8)
+        val buffer = ByteBuffer.allocate(36)
+        buffer.putInt(1) // version
+        buffer.putInt(config.windowMinutes)
+        buffer.putInt(config.rampDurationSeconds)
+        buffer.putDouble(config.baselineRestingBpm)
+        buffer.putDouble(config.baselineDeepSleepRmssd)
+        buffer.putFloat(config.motionSensitivity)
+        buffer.putInt(config.vibrationProfile.ordinal)
+        buffer.putInt(config.maxHapticIntensity)
+        return buffer.array()
     }
 
     fun parseConfig(data: ByteArray): WakeEngineConfig {
         return try {
-            val json = JSONObject(String(data, Charsets.UTF_8))
-            val profileStr = json.optString("vibrationProfile", VibrationProfile.GENTLE_RAMP.name)
-            val profile = try {
-                VibrationProfile.valueOf(profileStr)
-            } catch (_: Exception) {
-                VibrationProfile.GENTLE_RAMP
-            }
+            if (data.size < 36) return WakeEngineConfig()
+            val buffer = ByteBuffer.wrap(data)
+            val version = buffer.int
+            val windowMinutes = buffer.int
+            val rampDurationSeconds = buffer.int
+            val baselineRestingBpm = buffer.double
+            val baselineDeepSleepRmssd = buffer.double
+            val motionSensitivity = buffer.float
+            val profileOrdinal = buffer.int
+            val maxHapticIntensity = buffer.int
+
+            val profiles = VibrationProfile.values()
+            val profile = if (profileOrdinal in profiles.indices) profiles[profileOrdinal] else VibrationProfile.GENTLE_RAMP
 
             WakeEngineConfig(
-                windowMinutes = json.optInt("windowMinutes", 30),
-                rampDurationSeconds = json.optInt("rampDurationSeconds", 300),
-                baselineRestingBpm = json.optDouble("baselineRestingBpm", 55.0),
-                baselineDeepSleepRmssd = json.optDouble("baselineDeepSleepRmssd", 50.0),
-                motionSensitivity = json.optDouble("motionSensitivity", 1.0).toFloat(),
+                windowMinutes = windowMinutes,
+                rampDurationSeconds = rampDurationSeconds,
+                baselineRestingBpm = baselineRestingBpm,
+                baselineDeepSleepRmssd = baselineDeepSleepRmssd,
+                motionSensitivity = motionSensitivity,
                 vibrationProfile = profile,
-                maxHapticIntensity = json.optInt("maxHapticIntensity", 255)
+                maxHapticIntensity = maxHapticIntensity
             )
         } catch (_: Exception) {
             WakeEngineConfig()
         }
     }
 
+    data class TelemetryData(
+        val timestamp: Long,
+        val heartRateBpm: Double,
+        val rmssd: Double,
+        val actigraphyScore: Double,
+        val stageOrdinal: Int,
+        val isTracking: Boolean
+    )
+
+    // Telemetry binary: [timestamp:Long][heartRateBpm:Double][rmssd:Double][actigraphyScore:Double][stageOrdinal:Int][isTracking:Byte]
+    // Total bytes = 8 + 8 + 8 + 8 + 4 + 1 = 37 bytes
     fun serializeTelemetry(
         heartRateBpm: Double,
         rmssd: Double,
         actigraphyScore: Double,
-        currentStage: String,
-        reason: String,
+        stage: SleepStage,
         isTracking: Boolean
     ): ByteArray {
-        val json = JSONObject().apply {
-            put("timestamp", System.currentTimeMillis())
-            put("heartRateBpm", heartRateBpm)
-            put("rmssd", rmssd)
-            put("actigraphyScore", actigraphyScore)
-            put("currentStage", currentStage)
-            put("reason", reason)
-            put("isTracking", isTracking)
-        }
-        return json.toString().toByteArray(Charsets.UTF_8)
+        val buffer = ByteBuffer.allocate(37)
+        buffer.putLong(System.currentTimeMillis())
+        buffer.putDouble(heartRateBpm)
+        buffer.putDouble(rmssd)
+        buffer.putDouble(actigraphyScore)
+        buffer.putInt(stage.ordinal)
+        buffer.put(if (isTracking) 1.toByte() else 0.toByte())
+        return buffer.array()
     }
 
-    fun parseTelemetry(data: ByteArray): JSONObject? {
+    fun parseTelemetry(data: ByteArray): TelemetryData? {
         return try {
-            JSONObject(String(data, Charsets.UTF_8))
+            if (data.size < 37) return null
+            val buffer = ByteBuffer.wrap(data)
+            TelemetryData(
+                timestamp = buffer.long,
+                heartRateBpm = buffer.double,
+                rmssd = buffer.double,
+                actigraphyScore = buffer.double,
+                stageOrdinal = buffer.int,
+                isTracking = buffer.get() == 1.toByte()
+            )
         } catch (_: Exception) {
             null
         }

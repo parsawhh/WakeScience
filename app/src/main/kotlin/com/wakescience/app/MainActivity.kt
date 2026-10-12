@@ -13,6 +13,7 @@ import com.google.android.gms.wearable.Wearable
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.slider.Slider
 import com.wakescience.core.BridgeProtocol
+import com.wakescience.core.SleepStage
 import com.wakescience.core.VibrationProfile
 import com.wakescience.core.WakeEngineConfig
 import kotlinx.coroutines.CoroutineScope
@@ -113,17 +114,15 @@ class MainActivity : Activity(), MessageClient.OnMessageReceivedListener {
 
     override fun onMessageReceived(event: MessageEvent) {
         if (event.path == BridgeProtocol.PATH_TELEMETRY) {
-            val json = BridgeProtocol.parseTelemetry(event.data) ?: return
+            val tele = BridgeProtocol.parseTelemetry(event.data) ?: return
             runOnUiThread {
-                val bpm = json.optDouble("heartRateBpm", 0.0)
-                val rmssd = json.optDouble("rmssd", 0.0)
-                val stage = json.optString("currentStage", "IDLE")
-                val act = json.optDouble("actigraphyScore", 0.0)
+                val stages = SleepStage.values()
+                val stage = if (tele.stageOrdinal in stages.indices) stages[tele.stageOrdinal].name else "UNKNOWN"
 
-                tvLiveBpm.text = if (bpm > 0) "${bpm.toInt()} BPM" else "-- BPM"
-                tvLiveRmssd.text = if (rmssd > 0) "${rmssd.toInt()} ms" else "-- ms"
+                tvLiveBpm.text = if (tele.heartRateBpm > 0) "${tele.heartRateBpm.toInt()} BPM" else "-- BPM"
+                tvLiveRmssd.text = if (tele.rmssd > 0) "${tele.rmssd.toInt()} ms" else "-- ms"
                 tvLiveStage.text = stage
-                log("Telemetry: HR=${bpm.toInt()} RMSSD=${rmssd.toInt()} Stage=$stage Act=${String.format("%.2f", act)}")
+                log("Telemetry: HR=${tele.heartRateBpm.toInt()} Stage=$stage Act=${String.format("%.2f", tele.actigraphyScore)}")
             }
         }
     }

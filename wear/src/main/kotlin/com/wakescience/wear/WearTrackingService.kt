@@ -24,6 +24,7 @@ import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Wearable
 import com.wakescience.core.BridgeProtocol
 import com.wakescience.core.PhysiologicalEpoch
+import com.wakescience.core.SleepStage
 import com.wakescience.core.SmartWakeEngine
 import com.wakescience.core.StimulusRampController
 import com.wakescience.core.WakeEngineConfig
@@ -53,7 +54,7 @@ class WearTrackingService : Service(), SensorEventListener {
     private var latestBpm = 60.0
     private var latestRmssd = 50.0
     private var latestActivity = 0.0
-    private var currentStageStr = "IDLE"
+    private var currentStage = SleepStage.WAKE
 
     private var windowStartMs = 0L
     private var hardDeadlineMs = 0L
@@ -77,7 +78,6 @@ class WearTrackingService : Service(), SensorEventListener {
 
         startForeground(1001, notification)
 
-        // Parse intent config or use currentConfig
         intent?.getByteArrayExtra("CONFIG_BYTES")?.let {
             currentConfig = BridgeProtocol.parseConfig(it)
             rampController = StimulusRampController(currentConfig)
@@ -87,7 +87,7 @@ class WearTrackingService : Service(), SensorEventListener {
         hardDeadlineMs = intent?.getLongExtra("HARD_DEADLINE_MS", 0L) ?: (System.currentTimeMillis() + (currentConfig.windowMinutes * 60 * 1000L))
 
         Log.i(TAG, "Tracking window: start=$windowStartMs, deadline=$hardDeadlineMs, profile=${currentConfig.vibrationProfile}")
-        broadcastStatusUpdate("Tracking started", latestBpm, latestRmssd, currentStageStr)
+        broadcastStatusUpdate("Tracking started", latestBpm, latestRmssd, currentStage.name)
 
         startAccelerometerMonitoring()
         startHealthServicesMonitoring()
@@ -139,7 +139,7 @@ class WearTrackingService : Service(), SensorEventListener {
                     samples.forEach { dp ->
                         latestBpm = dp.value
                         Log.d(TAG, "Heart rate sample: $latestBpm BPM")
-                        broadcastStatusUpdate("Tracking (HR: ${latestBpm.toInt()})", latestBpm, latestRmssd, currentStageStr)
+                        broadcastStatusUpdate("Tracking (HR: ${latestBpm.toInt()})", latestBpm, latestRmssd, currentStage.name)
                         sendTelemetryToPhone()
                     }
                 }
@@ -178,11 +178,11 @@ class WearTrackingService : Service(), SensorEventListener {
                     baselineDeepSleepRmssd = currentConfig.baselineDeepSleepRmssd
                 )
 
-                currentStageStr = result.stagedStage.name
+                currentStage = result.stagedStage
                 latestActivity = epoch.vectorMagnitudes.average().takeIf { !it.isNaN() } ?: 0.0
 
                 Log.i(TAG, "Epoch evaluated: stage=${result.stagedStage}, shouldWake=${result.shouldWakeNow}, reason=${result.reason}")
-                broadcastStatusUpdate(result.reason, latestBpm, latestRmssd, currentStageStr)
+                broadcastStatusUpdate(result.reason, latestBpm, latestRmssd, currentStage.name)
                 sendTelemetryToPhone()
 
                 if (result.shouldWakeNow) {
@@ -231,8 +231,7 @@ class WearTrackingService : Service(), SensorEventListener {
                     heartRateBpm = latestBpm,
                     rmssd = latestRmssd,
                     actigraphyScore = latestActivity,
-                    currentStage = currentStageStr,
-                    reason = "Monitoring",
+                    stage = currentStage,
                     isTracking = true
                 )
                 val nodeClient = Wearable.getNodeClient(this@WearTrackingService)
